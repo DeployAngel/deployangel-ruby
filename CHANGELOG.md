@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-01)
 
 - Release identity on Kamal (`KAMAL_VERSION`), Render (`RENDER_GIT_COMMIT`),
   Fly.io (the deploy's image tag), Railway (`RAILWAY_GIT_COMMIT_SHA`, or the
