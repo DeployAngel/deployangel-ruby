@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  # The agent supports Ruby 3.1 and Rails 7.1 or later, so it runs on the
+  # oldest and newest of each.
+  test:
+    name: Ruby ${{ matrix.ruby }}, Rails ${{ matrix.rails }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { ruby: "3.1", rails: "7.1" }
+          - { ruby: "3.1", rails: "7.2" }
+          - { ruby: "3.2", rails: "8.0" }
+          - { ruby: "3.3", rails: "8.1" }
+          - { ruby: "3.4", rails: "8.1" }
+    env:
+      ACTIVEJOB_VERSION: ${{ matrix.rails }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # A gem doesn't commit its Gemfile.lock, so gems install fresh.
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Install gems
+        run: bundle install
+
+      - name: Run tests
+        run: bundle exec rspec

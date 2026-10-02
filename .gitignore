@@ -1,0 +1,8 @@
+/.bundle/
+/pkg/
+/tmp/
+Gemfile.lock
+*.gem
+
+# macOS
+.DS_Store

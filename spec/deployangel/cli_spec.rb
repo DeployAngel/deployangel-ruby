@@ -1,0 +1,161 @@
+# frozen_string_literal: true
+
+require "tmpdir"
+
+RSpec.describe DeployAngel::CLI do
+  let(:stdout) { StringIO.new }
+  let(:stderr) { StringIO.new }
+  let(:clock) { FakeClock.new(Time.utc(2026, 9, 30, 14)) }
+  let(:sleeper) { ->(seconds) { clock.advance(seconds) } }
+
+  def run(*argv, client:, git_head: "81ac27d0000")
+    described_class.new(argv, stdout: stdout, stderr: stderr, client: client, sleeper: sleeper,
+      clock: clock, git_head: git_head).run
+  end
+
+  it "maps verdicts to exit codes" do
+    { "verified" => 0, "failed" => 1, "inconclusive" => 2 }.each do |verdict, code|
+      client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: verdict) ])
+      expect(run("verify", "--format=json", client: client)).to eq(code)
+    end
+  end
+
+  it "defaults to the git HEAD commit" do
+    client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: "verified") ])
+    run("verify", client: client)
+
+    expect(client.calls.first).to eq([ :deployments, { commit: "81ac27d0000", version: nil, limit: 1 } ])
+  end
+
+  it "exits 3 without waiting while the verification is in progress" do
+    client = FakeClient.new(documents: [ verdict_document(state: "observing") ])
+    expect(run("verify", client: client)).to eq(3)
+  end
+
+  it "waits for a verdict, printing progress to stderr" do
+    client = FakeClient.new(documents: [ verdict_document(state: "pending"), verdict_document(state: "observing"),
+                                         verdict_document(state: "closed", verdict: "verified") ])
+
+    expect(run("verify", "--wait", "--format=json", client: client)).to eq(0)
+    expect(stderr.string).to include("v184: pending", "v184: observing", "v184: closed")
+    expect(JSON.parse(stdout.string).dig("verification", "verdict")).to eq("verified")
+  end
+
+  it "returns at the initial check with --until initial, never as success" do
+    ok = FakeClient.new(documents: [ verdict_document(state: "observing"),
+                                     verdict_document(state: "observing", initial_check: { "result" => "no_problems_so_far" }) ])
+    warn = FakeClient.new(documents: [ verdict_document(state: "observing", initial_check: { "result" => "warnings" }) ])
+
+    expect(run("verify", "--wait", "--until=initial", client: ok)).to eq(6)
+    expect(run("verify", "--wait", "--until=initial", client: warn)).to eq(7)
+  end
+
+  it "returns a failed verdict immediately even when waiting through watching" do
+    client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: "failed") ])
+    expect(run("verify", "--wait", "--until=closed", client: client)).to eq(1)
+  end
+
+  it "keeps waiting through watching with --until closed" do
+    client = FakeClient.new(documents: [ verdict_document(state: "watching", verdict: "verified"),
+                                         verdict_document(state: "closed", verdict: "verified") ])
+    expect(run("verify", "--wait", "--until=closed", client: client)).to eq(0)
+    expect(client.calls.count { |call| call.first == :verification }).to eq(2)
+  end
+
+  it "times out with exit 3 and the current document" do
+    client = FakeClient.new(documents: [ verdict_document(state: "observing") ])
+
+    expect(run("verify", "--wait", "--timeout=5m", "--format=json", client: client)).to eq(3)
+    expect(stderr.string).to include("timed out")
+    expect(clock.now).to eq(Time.utc(2026, 9, 30, 14, 5))
+  end
+
+  it "waits for the deployment to be registered, or exits 4 without --wait" do
+    missing = FakeClient.new(deployments_list: [])
+    expect(run("verify", client: missing)).to eq(4)
+
+    appears = FakeClient.new(deployments_list: [], documents: [ verdict_document(state: "closed", verdict: "verified") ])
+    sleeper_with_registration = ->(seconds) { clock.advance(seconds) && appears.deployments_list = [ { "id" => 42 } ] }
+    code = described_class.new(%w[verify --wait], stdout: stdout, stderr: stderr, client: appears,
+      sleeper: sleeper_with_registration, clock: clock, git_head: "81ac27d").run
+    expect(code).to eq(0)
+    expect(stderr.string).to include("to be registered")
+  end
+
+  it "renders a readable summary" do
+    document = verdict_document(state: "closed", verdict: "failed")
+    document["findings"] = [ { "signal" => "http_5xx_rate", "scope" => "application", "status" => "failing",
+                               "baseline_value" => 0.002, "observed_value" => 0.068, "observed_n" => 2140 } ]
+    document["exceptions"] = [ { "exception_class" => "NoMethodError", "top_frame" => "app/services/order_creator.rb#call",
+                                 "count" => 8, "sources" => { "route:POST /orders" => 8 } } ]
+    document["deployment"] = (document["deployment"] || {}).merge(
+      "promoted_from" => { "environment" => "staging", "version" => "v57", "verdict" => "verified" })
+    run("verify", "--format=text", client: FakeClient.new(documents: [ document ]))
+
+    expect(stdout.string).to include("HTTP 5xx rate on application: 0.2% -> 6.8% (2140 samples)",
+      "NoMethodError in app/services/order_creator.rb#call (8x) route:POST /orders", "Verdict: failed",
+      "Promoted from staging v57 (cleared)")
+  end
+
+  it "registers deployments and reports checks against the current commit" do
+    client = FakeClient.new
+    expect(run("release", "--version=v185", client: client)).to eq(0)
+    expect(run("check", "--name=smoke", "--status=pass", "--covers=password_reset", client: client)).to eq(0)
+
+    expect(client.calls).to include([ :register, { commit: "81ac27d0000", version: "v185", kind: nil, provider: nil, source_url: nil } ],
+      [ :check, "commit:81ac27d0000", { name: "smoke", status: "pass", covers: [ "password_reset" ], details_url: nil } ])
+  end
+
+  it "fills in the commit, label, provider, and run link inside GitHub Actions, even without a git checkout" do
+    client = FakeClient.new
+    env = { "DEPLOYANGEL_API_TOKEN" => "t", "GITHUB_ACTIONS" => "true", "GITHUB_SHA" => "abc1234def5678", "GITHUB_RUN_NUMBER" => "12",
+            "GITHUB_RUN_ID" => "99", "GITHUB_SERVER_URL" => "https://github.com", "GITHUB_REPOSITORY" => "acme/shop" }
+    code = described_class.new(%w[release], env: env, stdout: stdout, stderr: stderr, client: client, git_head: false).run
+
+    expect(code).to eq(0)
+    expect(client.calls.last).to eq([ :register, { commit: "abc1234def5678", version: "run-12", kind: nil,
+      provider: "github_actions", source_url: "https://github.com/acme/shop/actions/runs/99" } ])
+
+    described_class.new(%w[release --version=2026.09.30 --provider=manual], env: env, stdout: stdout, stderr: stderr, client: client, git_head: false).run
+    expect(client.calls.last.last).to include(version: "2026.09.30", provider: "manual", commit: "abc1234def5678")
+  end
+
+  it "registers Kamal's release from a post-deploy hook" do
+    client = FakeClient.new
+    env = { "DEPLOYANGEL_API_TOKEN" => "t", "KAMAL_VERSION" => "abc1234def5678", "KAMAL_COMMAND" => "deploy" }
+    described_class.new(%w[release], env: env, stdout: stdout, stderr: stderr, client: client, git_head: false).run
+
+    expect(client.calls.last).to eq([ :register, { commit: "abc1234def5678", version: nil, kind: nil, provider: "kamal", source_url: nil } ])
+  end
+
+  describe "install kamal" do
+    around { |example| Dir.mktmpdir { |root| @root = root; example.run } }
+
+    def install = described_class.new(%w[install kamal], stdout: stdout, stderr: stderr, root: @root).run
+
+    it "writes an executable post-deploy hook that registers each deploy" do
+      expect(install).to eq(0)
+
+      hook = File.join(@root, ".kamal/hooks/post-deploy")
+      expect(File.read(hook)).to include("bundle exec deployangel release || true")
+      expect(File.executable?(hook)).to be(true)
+      expect(stdout.string).to include("Created .kamal/hooks/post-deploy", "DEPLOYANGEL_API_TOKEN")
+    end
+
+    it "leaves an existing hook alone and says what to add" do
+      FileUtils.mkdir_p(File.join(@root, ".kamal/hooks"))
+      File.write(File.join(@root, ".kamal/hooks/post-deploy"), "#!/bin/sh\necho deployed\n")
+
+      expect(install).to eq(0)
+      expect(File.read(File.join(@root, ".kamal/hooks/post-deploy"))).to eq("#!/bin/sh\necho deployed\n")
+      expect(stdout.string).to include("already exists. Add this line to it:", "bundle exec deployangel release || true")
+    end
+  end
+
+  it "reports usage and auth problems with exit 5" do
+    expect(run("verify", "--until=never", client: FakeClient.new)).to eq(5)
+    expect(run("check", "--name=x", client: FakeClient.new)).to eq(5)
+    expect(described_class.new(%w[verify], stdout: stdout, stderr: stderr, env: {}, git_head: "abc1234").run).to eq(5)
+    expect(stderr.string).to include("DEPLOYANGEL_API_TOKEN is not set")
+  end
+end
