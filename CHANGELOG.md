@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 (2026-10-02)
 
 - Unsent minutes wait in the buffer as gzipped JSON rather than Ruby objects.
   With every list at its cap, 10 minutes queued while DeployAngel was
