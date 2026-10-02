@@ -3,7 +3,7 @@
 require "digest"
 
 module DeployAngel
-  # Exception fingerprint algorithm v1 (spec §5). Stable across deployments:
+  # Exception fingerprint algorithm v1. Stable across deployments:
   # no line numbers, no messages, no gem versions, no absolute paths, and no
   # Ruby-version-specific label formatting.
   module Fingerprint
@@ -44,7 +44,7 @@ module DeployAngel
       "#{normalize_path(path, root)}##{label}"
     end
 
-    # Application frames only, relative to the root (spec §6).
+    # Application frames only, relative to the root.
     def backtrace(exception, root:)
       locations(exception).select { |path, _| app_path?(path, root) }.first(MAX_BACKTRACE)
         .map { |path, label| "#{normalize_path(path, root)}##{label}" }

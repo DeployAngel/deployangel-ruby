@@ -286,5 +286,8 @@ bundle install
 bundle exec rspec
 ```
 
-The agent speaks DeployAngel Agent Protocol v1. See `DEPLOYANGEL_SPEC.md` §4–§6
-in the main repository.
+The agent speaks DeployAngel Agent Protocol v1: one gzipped JSON payload per
+process per minute to `POST /api/v1/telemetry`, and the application's metadata
+once per process to `POST /api/v1/application_metadata`.
+`lib/deployangel/core/protocol.rb` and `lib/deployangel/rails/metadata.rb`
+build them.

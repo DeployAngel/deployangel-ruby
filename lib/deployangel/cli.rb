@@ -13,7 +13,7 @@ require_relative "verification_waiter"
 require_relative "cli/formatter"
 
 module DeployAngel
-  # `deployangel` command for developers, CI, and coding agents (spec §27).
+  # `deployangel` command for developers, CI, and coding agents.
   # Runs without booting Rails.
   class CLI
     USAGE_ERROR = 5

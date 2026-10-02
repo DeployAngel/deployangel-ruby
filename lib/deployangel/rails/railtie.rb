@@ -15,7 +15,7 @@ module DeployAngel
       end
 
       # Handled reports (Rails.error.handle / Rails.error.report) are shown for
-      # context; only unhandled exceptions count toward verdicts (spec §4).
+      # context; only unhandled exceptions count toward verdicts.
       initializer "deployangel.error_reporter" do |app|
         app.executor.error_reporter&.subscribe(DeployAngel::Rails::ErrorSubscriber.new) if app.executor.respond_to?(:error_reporter)
       end

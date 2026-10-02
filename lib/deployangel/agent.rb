@@ -92,7 +92,7 @@ module DeployAngel
     end
 
     # Signals this process can observe, announced in every payload so the
-    # cloud never claims to verify what the agent cannot see (spec §4).
+    # cloud never claims to verify what the agent cannot see.
     def capabilities
       DeployAngel.capabilities
     end
@@ -126,7 +126,7 @@ module DeployAngel
     end
 
     # Sends the in-progress minute too, bounded by a short timeout, because
-    # deployments restart processes (spec §5, Process lifecycle).
+    # deployments restart processes.
     def shutdown(timeout: SHUTDOWN_TIMEOUT)
       return unless @active
 

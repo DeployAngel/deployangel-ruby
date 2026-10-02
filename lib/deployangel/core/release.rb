@@ -2,7 +2,7 @@
 
 module DeployAngel
   # Which release this process is running, resolved once at boot so that
-  # telemetry can be attributed to a deployment (spec §5).
+  # telemetry can be attributed to a deployment.
   class Release < Struct.new(:version, :commit, :source)
     COMMIT_FORMAT = /\A[0-9a-f]{7,40}\z/
 

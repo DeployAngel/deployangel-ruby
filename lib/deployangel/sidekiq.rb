@@ -44,7 +44,7 @@ module DeployAngel
       DeployAngel.add_capability("jobs")
       ::Sidekiq.configure_server do |config|
         config.server_middleware { |chain| chain.add(ServerMiddleware) }
-        # Jobs that exhausted their retries are discarded (spec §4).
+        # Jobs that exhausted their retries are discarded.
         config.death_handlers << ->(job, _error) { record_death(job) } if config.respond_to?(:death_handlers)
       end
     end

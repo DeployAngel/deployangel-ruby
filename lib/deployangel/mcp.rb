@@ -6,7 +6,7 @@ module DeployAngel
   module MCP
     # A Model Context Protocol server over stdio (JSON-RPC 2.0, one message
     # per line) so coding agents can ask whether their release passed
-    # production (spec §27). stdout carries only protocol messages.
+    # production. stdout carries only protocol messages.
     #
     # The tools are read-only with respect to production: nothing here rolls
     # back, restarts, or changes customer infrastructure.

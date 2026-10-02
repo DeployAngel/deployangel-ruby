@@ -4,7 +4,7 @@ module DeployAngel
   module Rails
     # Rack middleware at the top of the stack, so it sees the final status
     # after Rails renders exceptions. Records the matched route pattern,
-    # never the raw path, which keeps IDs out of route keys (spec §6).
+    # never the raw path, which keeps IDs out of route keys.
     class Http
       FORMAT_SUFFIX = "(.:format)"
 

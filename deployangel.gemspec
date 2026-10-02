@@ -15,9 +15,13 @@ Gem::Specification.new do |spec|
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1"
 
-  spec.homepage = "https://deployangel.com"
+  spec.homepage = "https://www.deployangel.com"
   spec.metadata = {
-    "homepage_uri" => "https://deployangel.com",
+    "homepage_uri" => "https://www.deployangel.com",
+    "documentation_uri" => "https://www.deployangel.com/docs",
+    "source_code_uri" => "https://github.com/DeployAngel/deployangel-ruby",
+    "changelog_uri" => "https://github.com/DeployAngel/deployangel-ruby/blob/main/CHANGELOG.md",
+    "bug_tracker_uri" => "https://github.com/DeployAngel/deployangel-ruby/issues",
     "rubygems_mfa_required" => "true"
   }
 

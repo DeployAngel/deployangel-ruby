@@ -6,10 +6,10 @@ require "yaml"
 
 module DeployAngel
   module Rails
-    # What the application contains, sent once per process (spec §4,
-    # Application metadata): the route table, job classes, declared
-    # recurring schedules, critical flows, and file digests. Paths and hashes
-    # only; source code never leaves the application.
+    # What the application contains, sent once per process: the route table,
+    # job classes, declared recurring schedules, critical flows, and file
+    # digests. Paths and hashes only; source code never leaves the
+    # application.
     class Metadata
       DIGEST_GLOBS = %w[app/**/* config/**/* lib/**/* db/migrate/**/* Gemfile.lock].freeze
       MAX_FILES = 20_000

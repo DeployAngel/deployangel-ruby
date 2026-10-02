@@ -2,12 +2,12 @@
 
 module DeployAngel
   # Finds a deployment and polls its verdict document until the requested
-  # point: the 15-minute initial check, a verdict, or the end of watching
-  # (spec §27). Shared by the CLI and the MCP server.
+  # point: the 15-minute initial check, a verdict, or the end of watching.
+  # Shared by the CLI and the MCP server.
   class VerificationWaiter
     Outcome = Struct.new(:document, :exit_code, :timed_out, :not_found, keyword_init: true)
 
-    # Exit codes are the primary signal for agents and CI (spec §27).
+    # Exit codes are the primary signal for agents and CI.
     EXIT_CODES = { "verified" => 0, "failed" => 1, "inconclusive" => 2 }.freeze
     TIMED_OUT = 3
     NOT_FOUND = 4

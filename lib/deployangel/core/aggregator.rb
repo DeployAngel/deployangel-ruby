@@ -143,7 +143,7 @@ module DeployAngel
     end
 
     # A representative backtrace is kept only the first time this process
-    # sees a fingerprint, and at most 5 per period (spec §4).
+    # sees a fingerprint, and at most 5 per period.
     def record_exception(details, source: nil, handled: false, backtrace: nil)
       started_at = period_start(@clock.call)
       @mutex.synchronize do

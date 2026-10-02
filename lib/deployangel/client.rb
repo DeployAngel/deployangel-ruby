@@ -5,7 +5,7 @@ require "net/http"
 require "uri"
 
 module DeployAngel
-  # Read and registration API client for the CLI and MCP server (spec §27).
+  # Read and registration API client for the CLI and MCP server.
   # Unlike the agent's Transport, errors raise, because a person or coding
   # agent is waiting on the answer.
   class Client

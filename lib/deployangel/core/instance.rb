@@ -5,7 +5,7 @@ require "socket"
 
 module DeployAngel
   # One OS process. The random suffix is regenerated after fork, so a forked
-  # child never reuses its parent's identity (spec §4).
+  # child never reuses its parent's identity.
   class Instance
     attr_reader :id, :host, :pid, :process_type, :started_at
 
