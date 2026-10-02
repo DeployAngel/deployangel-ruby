@@ -87,7 +87,10 @@ RSpec.describe DeployAngel::CLI do
   it "renders a readable summary" do
     document = verdict_document(state: "closed", verdict: "failed")
     document["findings"] = [ { "signal" => "http_5xx_rate", "scope" => "application", "status" => "failing",
-                               "baseline_value" => 0.002, "observed_value" => 0.068, "observed_n" => 2140 } ]
+                               "baseline_value" => 0.002, "observed_value" => 0.068, "observed_n" => 2140 },
+                             { "signal" => "missing_recurring_job", "scope" => "recurring_job:prune_history", "status" => "failing",
+                               "baseline_value" => 86_400.0, "observed_value" => nil,
+                               "threshold" => "expected by 08:15 UTC (declared schedule)" } ]
     document["exceptions"] = [ { "exception_class" => "NoMethodError", "top_frame" => "app/services/order_creator.rb#call",
                                  "count" => 8, "sources" => { "route:POST /orders" => 8 } } ]
     document["deployment"] = (document["deployment"] || {}).merge(
@@ -96,7 +99,9 @@ RSpec.describe DeployAngel::CLI do
 
     expect(stdout.string).to include("HTTP 5xx rate on application: 0.2% -> 6.8% (2140 samples)",
       "NoMethodError in app/services/order_creator.rb#call (8x) route:POST /orders", "Verdict: failed",
-      "Promoted from staging v57 (cleared)")
+      "Promoted from staging v57 (cleared)",
+      "Recurring job on recurring_job:prune_history: didn't run, expected by 08:15 UTC (declared schedule)")
+    expect(stdout.string).not_to include("8640000")
   end
 
   it "registers deployments and reports checks against the current commit" do

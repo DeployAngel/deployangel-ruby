@@ -70,6 +70,9 @@ module DeployAngel
         label = "#{LABELS.fetch(finding["signal"], finding["signal"])} on #{finding["scope"]}"
         if COUNTS.include?(finding["signal"])
           "#{label}: #{finding["observed_value"].to_i} occurrences"
+        elsif finding["signal"] == "missing_recurring_job"
+          # Its value is the job's interval in seconds, not a rate.
+          "#{label}: #{finding["status"] == "pass" ? "ran" : "didn't run"}, #{finding["threshold"]}"
         elsif finding["baseline_value"].nil? && finding["observed_value"].nil?
           "#{label}: #{finding["threshold"]}"
         else
