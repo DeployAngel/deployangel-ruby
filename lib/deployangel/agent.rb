@@ -9,6 +9,12 @@ module DeployAngel
     METADATA_PATH = "/api/v1/application_metadata"
     SHUTDOWN_TIMEOUT = 2
     DEFAULT_PAUSE = 60
+    # Seconds past each minute a process waits before sending, chosen once
+    # per process so the cloud gets a steady stream instead of a burst at
+    # the top of the minute. The cloud reads a minute 2 minutes after it
+    # ends, so a send that times out (5 seconds) and goes again a minute
+    # later still lands in time.
+    FLUSH_JITTER = 1.0..50.0
 
     attr_reader :config, :release, :instance
     attr_writer :metadata
@@ -173,8 +179,7 @@ module DeployAngel
         @paused_until = nil
         @metadata_sent = false
         @thread = nil
-        # Spread processes across the first seconds of each minute.
-        @jitter = rand(1.0..10.0)
+        @jitter = rand(FLUSH_JITTER)
       end
 
       def run_reporter

@@ -30,6 +30,13 @@ RSpec.describe DeployAngel::Agent do
     expect(payload["routes"].sole["key"]).to eq("GET /products")
   end
 
+  it "sends each minute at a per-process offset spread across most of the next minute" do
+    offsets = Array.new(50) { build_agent.send(:seconds_until_next_flush) - 50 }
+
+    expect(offsets).to all(be_between(1.0, 50.0))
+    expect(offsets.max - offsets.min).to be > 20
+  end
+
   it "does nothing when inactive" do
     agent = build_agent(environment: "development")
     agent.record_request(route_key: "GET /", status: 200, duration_ms: 1)

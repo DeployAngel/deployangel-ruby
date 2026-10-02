@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Each process sends its minute of telemetry 1 to 50 seconds after the
+  minute ends, chosen once per process, instead of within the first 10
+  seconds. Apps' batches reach DeployAngel spread across the minute rather
+  than all at once.
+
 ## 0.1.2 (2026-10-02)
 
 - Unsent minutes wait in the buffer as gzipped JSON rather than Ruby objects.
