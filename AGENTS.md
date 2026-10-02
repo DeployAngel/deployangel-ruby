@@ -46,5 +46,6 @@ them too, and the DeployAngel cloud has to accept them first.
   timeouts, full buffers, and forks.
 - Update the README and CHANGELOG when what the agent sends, or how it's
   configured, changes.
-- For maintainers: DeployAngel's own cloud app runs a copy of this gem, so
-  after a change, run `bin/vendor-agent` in the `cloud` repository.
+- For maintainers: DeployAngel's own cloud app runs this gem from RubyGems,
+  so after a release, run `bundle update deployangel` in the `cloud`
+  repository (Dependabot also opens a pull request for it).
