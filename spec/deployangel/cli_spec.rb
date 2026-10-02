@@ -8,8 +8,10 @@ RSpec.describe DeployAngel::CLI do
   let(:clock) { FakeClock.new(Time.utc(2026, 9, 30, 14)) }
   let(:sleeper) { ->(seconds) { clock.advance(seconds) } }
 
-  def run(*argv, client:, git_head: "81ac27d0000")
-    described_class.new(argv, stdout: stdout, stderr: stderr, client: client, sleeper: sleeper,
+  # A fixed environment, so a CI system running these specs (GitHub Actions
+  # sets GITHUB_SHA) doesn't change what the CLI detects.
+  def run(*argv, client:, git_head: "81ac27d0000", env: {})
+    described_class.new(argv, env: env, stdout: stdout, stderr: stderr, client: client, sleeper: sleeper,
       clock: clock, git_head: git_head).run
   end
 
