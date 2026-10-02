@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 (2026-10-02)
 
 - Each process sends its minute of telemetry 1 to 50 seconds after the
   minute ends, chosen once per process, instead of within the first 10
