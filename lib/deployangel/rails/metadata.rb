@@ -68,10 +68,21 @@ module DeployAngel
         Array(tasks).filter_map do |key, task|
           next unless task.is_a?(Hash) && task["schedule"]
 
-          { "key" => key.to_s, "class" => task["class"]&.to_s, "schedule" => task["schedule"].to_s, "source" => "solid_queue" }
+          { "key" => key.to_s, "class" => task["class"]&.to_s, "schedule" => task["schedule"].to_s, "source" => "solid_queue",
+            "time_zone" => scheduler_time_zone }
         end
       rescue StandardError
         []
+      end
+
+      # The zone Solid Queue reads a schedule in when the schedule names
+      # none: its own setting, config.time_zone by default. nil when that's
+      # the system's local time or Solid Queue predates the setting, and
+      # DeployAngel then doesn't assume one.
+      def scheduler_time_zone
+        ::SolidQueue.time_zone if defined?(::SolidQueue) && ::SolidQueue.respond_to?(:time_zone)
+      rescue StandardError
+        nil
       end
 
       def file_manifest

@@ -47,9 +47,18 @@ RSpec.describe DeployAngel::Rails::Metadata do
     YAML
 
     expect(metadata.schedules).to eq([
-      { "key" => "nightly_invoices", "class" => "NightlyInvoiceJob", "schedule" => "at 3am every day", "source" => "solid_queue" },
-      { "key" => "cleanup", "class" => nil, "schedule" => "every hour", "source" => "solid_queue" }
+      { "key" => "nightly_invoices", "class" => "NightlyInvoiceJob", "schedule" => "at 3am every day", "source" => "solid_queue",
+        "time_zone" => nil },
+      { "key" => "cleanup", "class" => nil, "schedule" => "every hour", "source" => "solid_queue", "time_zone" => nil }
     ])
+  end
+
+  it "reports the time zone Solid Queue reads schedules in" do
+    FileUtils.mkdir_p(File.join(@root, "config"))
+    File.write(File.join(@root, "config/recurring.yml"), "nightly:\n  class: NightlyInvoiceJob\n  schedule: at 3am every day\n")
+    stub_const("SolidQueue", Module.new { def self.time_zone = "Etc/UTC" })
+
+    expect(metadata.schedules.sole).to include("time_zone" => "Etc/UTC")
   end
 
   it "digests application files by relative path, and the manifest hash changes with content" do
