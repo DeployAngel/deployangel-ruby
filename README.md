@@ -78,10 +78,17 @@ user data.
   in-memory counters.
 - Payloads are sent from a background thread, once a minute, with short
   timeouts.
-- When DeployAngel is unreachable, the buffer is bounded (10 payloads) and the
-  oldest are dropped. Your app is never blocked or failed.
+- When DeployAngel is unreachable, the buffer is bounded (10 payloads, kept as
+  gzipped JSON) and the oldest are dropped. Your app is never blocked or failed.
 - Safe across forks (Puma cluster mode and similar), and the minute in progress
   is flushed at shutdown.
+
+`bundle exec rake bench` measures this: the time and allocations each request
+adds, memory with every list at its cap, and the one-time file digest pass
+(`APP_ROOT=path/to/app` to digest your own app). On an Apple M-series laptop
+with Ruby 3.4, recording a request adds about 1.6 µs and 6 objects, and with
+every route, job, checkpoint, and exception list at its cap the agent holds
+about 3 MB, including 10 unsent minutes.
 
 ## Configuration
 

@@ -40,6 +40,17 @@ RSpec.describe DeployAngel::Transport do
     end
   end
 
+  it "sends an encoded payload's bytes unchanged" do
+    with_server(status: 202) do |transport, captured, thread|
+      encoded = described_class.encode({ "hello" => "world" })
+      transport.post("/api/v1/telemetry", encoded)
+      thread.join(2)
+
+      expect(captured[:body].b).to eq(encoded.bytes.b)
+      expect(JSON.parse(Zlib.gunzip(captured[:body]))).to eq("hello" => "world")
+    end
+  end
+
   it "classifies responses" do
     with_server(status: 503) { |transport| expect(transport.post("/x", {}).outcome).to eq(:retry) }
     with_server(status: 422) { |transport| expect(transport.post("/x", {}).outcome).to eq(:drop) }

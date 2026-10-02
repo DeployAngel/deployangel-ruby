@@ -73,6 +73,22 @@ RSpec.describe DeployAngel::Agent do
     expect(agent.instance_variable_get(:@buffer).size).to be <= 3
   end
 
+  it "queues unsent minutes as gzipped JSON, then sends them once the endpoint recovers" do
+    transport.results = [ DeployAngel::Transport::Result.new(:retry, nil, nil) ]
+    agent = build_agent
+    agent.record_request(route_key: "GET /products", status: 200, duration_ms: 84)
+    clock.advance(60)
+
+    expect(agent.flush).to eq(0)
+    queued = agent.instance_variable_get(:@buffer).shift
+    expect(queued).to be_a(DeployAngel::Transport::Encoded)
+    expect(JSON.parse(Zlib.gunzip(queued.bytes)).dig("http", "requests")).to eq(1)
+
+    agent.instance_variable_get(:@buffer).unshift(queued)
+    expect(agent.flush).to eq(1)
+    expect(transport.posts.last.last.dig("http", "requests")).to eq(1)
+  end
+
   it "never raises into the application" do
     agent = build_agent
     allow(agent.instance_variable_get(:@aggregator)).to receive(:record).and_raise("boom")

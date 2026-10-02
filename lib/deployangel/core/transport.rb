@@ -16,10 +16,28 @@ module DeployAngel
       end
     end
 
+    # A payload already encoded as gzipped JSON. Queued telemetry is kept
+    # this way: a full minute is megabytes as Ruby objects but kilobytes
+    # compressed.
+    Encoded = Struct.new(:bytes)
+
+    def self.encode(body)
+      Encoded.new(gzip(JSON.generate(body)))
+    end
+
+    def self.gzip(string)
+      io = StringIO.new
+      writer = Zlib::GzipWriter.new(io)
+      writer.write(string)
+      writer.close
+      io.string
+    end
+
     def initialize(config)
       @config = config
     end
 
+    # body is a Hash, or an Encoded payload sent as is.
     # :ok (2xx), :retry (network error or 5xx), or :drop (any other status,
     # including 429 rate limiting, which the agent honors by pausing).
     def post(path, body)
@@ -29,7 +47,7 @@ module DeployAngel
       request["Content-Type"] = "application/json"
       request["Content-Encoding"] = "gzip"
       request["User-Agent"] = "deployangel-ruby/#{DeployAngel::VERSION} ruby/#{RUBY_VERSION}"
-      request.body = gzip(JSON.generate(body))
+      request.body = (body.is_a?(Encoded) ? body : self.class.encode(body)).bytes
 
       response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https",
         open_timeout: @config.open_timeout, read_timeout: @config.read_timeout,
@@ -53,14 +71,6 @@ module DeployAngel
         body.to_s.empty? ? {} : JSON.parse(body)
       rescue JSON::ParserError
         {}
-      end
-
-      def gzip(string)
-        io = StringIO.new
-        writer = Zlib::GzipWriter.new(io)
-        writer.write(string)
-        writer.close
-        io.string
       end
   end
 end

@@ -97,13 +97,14 @@ module DeployAngel
       DeployAngel.capabilities
     end
 
-    # Drains completed minutes into the buffer and sends what it can.
+    # Drains completed minutes into the buffer, encoded so unsent minutes stay
+    # small while DeployAngel is unreachable, and sends what it can.
     def flush(include_current: false)
       return 0 unless @active
 
       @aggregator.drain(include_current: include_current, max_periods: config.max_queued_payloads).each do |period|
-        @buffer.push(Protocol.telemetry(period, instance: @instance, release: @release, runtime: @runtime,
-          capabilities: capabilities))
+        @buffer.push(Transport.encode(Protocol.telemetry(period, instance: @instance, release: @release,
+          runtime: @runtime, capabilities: capabilities)))
       end
       send_buffered
     rescue StandardError => e

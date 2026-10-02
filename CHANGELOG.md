@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Unsent minutes wait in the buffer as gzipped JSON rather than Ruby objects.
+  With every list at its cap, 10 minutes queued while DeployAngel was
+  unreachable took about 20 MB; they now take well under 1 MB.
+- `rake bench` measures the agent's overhead: time and allocations per
+  request, memory with every list at its cap, and the file digest pass.
+
 ## 0.1.1 (2026-10-02)
 
 - Declared Solid Queue schedules carry the time zone Solid Queue reads them

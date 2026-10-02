@@ -26,7 +26,9 @@ class FakeTransport
     @results = results
   end
 
+  # Records payloads as Hashes, decoding the ones the agent queues encoded.
   def post(path, body)
+    body = JSON.parse(Zlib.gunzip(body.bytes)) if body.is_a?(DeployAngel::Transport::Encoded)
     @posts << [ path, body ]
     @results.shift || DeployAngel::Transport::Result.new(:ok, 202, nil)
   end
