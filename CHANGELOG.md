@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 (2026-10-02)
+
+- Declared Solid Queue schedules carry the time zone Solid Queue reads them
+  in (`SolidQueue.time_zone`, which defaults to `config.time_zone`), so
+  DeployAngel expects a job scheduled "at 4am every day" at the right hour.
+  Without it, a release could fail for a recurring job that wasn't due yet
+  when the app's time zone in the dashboard differed from the app's own.
+- `deployangel verify` prints a missing recurring job as "didn't run" and
+  when it was expected, instead of its interval as a percentage.
+- The README describes registering deploys on every host before the Heroku
+  add-on.
+
 ## 0.1.0 (2026-10-01)
 
 - Release identity on Kamal (`KAMAL_VERSION`), Render (`RENDER_GIT_COMMIT`),
