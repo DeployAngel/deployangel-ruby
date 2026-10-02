@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # A gem doesn't commit its Gemfile.lock, so gems install fresh.
       - name: Set up Ruby
