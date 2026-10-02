@@ -130,9 +130,10 @@ including IDs, since only 100 distinct names are counted per minute.
 
 ## Registering deploys
 
-On Heroku, the add-on registers every release for you. Anywhere else,
-DeployAngel notices a new release when the agent first reports it, and verifies
-it from there. The releases running when you install the agent are the baseline.
+DeployAngel notices a new release when the agent first reports it, and
+verifies it from there, with nothing to set up. The releases running when you
+install the agent are the baseline. On Heroku, the add-on also registers every
+release for you.
 
 Registering deploys yourself adds a link to the CI run and a label of your
 choice, and starts verification as soon as the deploy finishes. Use an API
