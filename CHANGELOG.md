@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 (2026-10-03)
+
+- A Solid Queue recurring task that runs a `command:` instead of a job class
+  reports the job class it runs as (`runs_as`, `SolidQueue::RecurringJob`
+  unless the app changes Solid Queue's default). DeployAngel can then expect
+  it on schedule and show it by its name in `config/recurring.yml`, instead
+  of guessing an interval from history and showing Solid Queue's wrapper.
+
 ## 0.1.3 (2026-10-02)
 
 - Each process sends its minute of telemetry 1 to 50 seconds after the
