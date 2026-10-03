@@ -64,9 +64,10 @@ deploy, and the dashboard says so.
 - Exceptions: a stable fingerprint, the exception class, a sanitized message
   (numbers, IDs, emails, and quoted values removed), and application frames
   only.
-- Once per process: the route table, job classes, Solid Queue recurring
-  schedules, critical flows, and file digests (relative paths and hashes, never
-  file contents) so DeployAngel can tell which routes changed in a release.
+- Once per process: the route table, job classes, recurring schedules
+  declared for Solid Queue, sidekiq-cron, or sidekiq-scheduler, critical
+  flows, and file digests (relative paths and hashes, never file contents) so
+  DeployAngel can tell which routes changed in a release.
   Disable digests with `DEPLOYANGEL_FILE_DIGESTS=false`.
 
 It does not send request bodies, parameters, headers, cookies, SQL, logs, or

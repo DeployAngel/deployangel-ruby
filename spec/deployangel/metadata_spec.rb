@@ -71,6 +71,114 @@ RSpec.describe DeployAngel::Rails::Metadata do
     expect(metadata.schedules.sole).to include("time_zone" => "Etc/UTC")
   end
 
+  describe "Sidekiq schedules" do
+    let(:local_zone) { Module.new { def self.determine_local_tzone = Struct.new(:name).new("America/New_York") } }
+
+    before do
+      FileUtils.mkdir_p(File.join(@root, "config"))
+      stub_const("EtOrbi", local_zone)
+    end
+
+    def write(path, content)
+      File.write(File.join(@root, path), content)
+    end
+
+    it "reads sidekiq-cron's schedule file, skipping disabled jobs" do
+      stub_const("Sidekiq::Cron", Module.new)
+      write("config/schedule.yml", <<~YAML)
+        nightly_invoices:
+          cron: "0 3 * * *"
+          class: NightlyInvoiceJob
+        weekly_digest:
+          cron: every Monday at 01:11
+          klass: WeeklyDigestJob
+        paused:
+          cron: "*/5 * * * *"
+          class: PausedJob
+          status: disabled
+      YAML
+
+      expect(metadata.schedules).to eq([
+        { "key" => "nightly_invoices", "class" => "NightlyInvoiceJob", "schedule" => "0 3 * * *", "source" => "sidekiq_cron",
+          "time_zone" => "America/New_York" },
+        { "key" => "weekly_digest", "class" => "WeeklyDigestJob", "schedule" => "every Monday at 01:11", "source" => "sidekiq_cron",
+          "time_zone" => "America/New_York" }
+      ])
+    end
+
+    it "follows sidekiq-cron's configured file, as a list, and falls back to .yaml" do
+      configuration = Struct.new(:cron_schedule_file).new("config/cron.yml")
+      stub_const("Sidekiq::Cron", Module.new { define_singleton_method(:configuration) { configuration } })
+      write("config/cron.yaml", "- name: hourly_sync\n  cron: \"0 * * * *\"\n  class: SyncJob\n")
+
+      expect(metadata.schedules.sole).to include("key" => "hourly_sync", "class" => "SyncJob", "schedule" => "0 * * * *")
+    end
+
+    it "ignores a schedule file when sidekiq-cron isn't loaded" do
+      write("config/schedule.yml", "nightly:\n  cron: \"0 3 * * *\"\n  class: NightlyJob\n")
+
+      expect(metadata.schedules).to eq([])
+    end
+
+    it "reads sidekiq-scheduler jobs from Sidekiq's config, with this environment's section" do
+      stub_const("SidekiqScheduler", Module.new)
+      write("config/sidekiq.yml", <<~YAML)
+        :concurrency: 5
+        :scheduler:
+          :schedule:
+            ignored_in_production:
+              cron: "0 0 * * *"
+        :production:
+          :scheduler:
+            :schedule:
+              NightlyInvoiceJob:
+                cron: ["0 3 * * * America/Chicago", { first_in: "1m" }]
+              refresh_cache:
+                every: ["15m", { first_in: "1m" }]
+                class: RefreshCacheJob
+              poll_feeds:
+                interval: 1h
+                class: PollFeedsJob
+              launch:
+                at: "2030/01/01 00:00"
+                class: LaunchJob
+              paused:
+                every: 5m
+                class: PausedJob
+                enabled: false
+              staging_only:
+                every: 5m
+                class: StagingJob
+                rails_env: staging, development
+      YAML
+
+      expect(metadata.schedules).to eq([
+        { "key" => "NightlyInvoiceJob", "class" => "NightlyInvoiceJob", "source" => "sidekiq_scheduler", "time_zone" => "America/New_York",
+          "schedule" => "0 3 * * * America/Chicago" },
+        { "key" => "refresh_cache", "class" => "RefreshCacheJob", "source" => "sidekiq_scheduler", "time_zone" => "America/New_York",
+          "schedule" => nil, "every" => "15m" },
+        { "key" => "poll_feeds", "class" => "PollFeedsJob", "source" => "sidekiq_scheduler", "time_zone" => "America/New_York",
+          "schedule" => nil, "every" => "1h" }
+      ])
+    end
+
+    it "reads the config file the Procfile's sidekiq command names, and the older top-level schedule" do
+      stub_const("SidekiqScheduler", Module.new)
+      File.write(File.join(@root, "Procfile"), "web: bundle exec puma\nworker: bundle exec sidekiq -C config/worker.yml\n")
+      write("config/worker.yml", "schedule:\n  cleanup:\n    cron: \"30 4 * * *\"\n    class: CleanupJob\n")
+
+      expect(metadata.schedules.sole).to include("key" => "cleanup", "class" => "CleanupJob", "schedule" => "30 4 * * *")
+    end
+
+    it "keeps other sources' schedules when one file can't be read" do
+      stub_const("Sidekiq::Cron", Module.new)
+      write("config/schedule.yml", "nightly: [unclosed")
+      write("config/recurring.yml", "nightly:\n  class: NightlyInvoiceJob\n  schedule: at 3am every day\n")
+
+      expect(metadata.schedules.sole).to include("key" => "nightly", "source" => "solid_queue")
+    end
+  end
+
   it "digests application files by relative path, and the manifest hash changes with content" do
     FileUtils.mkdir_p(File.join(@root, "app/controllers"))
     file = File.join(@root, "app/controllers/users_controller.rb")

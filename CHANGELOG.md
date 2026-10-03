@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Declared recurring jobs from sidekiq-cron and sidekiq-scheduler, alongside
+  Solid Queue's. sidekiq-cron jobs come from its schedule file
+  (`config/schedule.yml` unless configured otherwise); sidekiq-scheduler jobs
+  from the `:scheduler: :schedule:` section of Sidekiq's config file (the
+  `-C` file in the Procfile's sidekiq command, else `config/sidekiq.yml`),
+  with that environment's section applied. A repeating `every` or `interval`
+  is sent as `every`. Both carry the process's local time zone, which the
+  schedulers read a schedule in when it names none. Disabled jobs, jobs for
+  other environments, and one-off `at` and `in` jobs are left out. Jobs that
+  exist only in Redis aren't read.
+
 ## 0.1.4 (2026-10-03)
 
 - A Solid Queue recurring task that runs a `command:` instead of a job class
