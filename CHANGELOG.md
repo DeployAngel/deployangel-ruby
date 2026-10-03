@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 (2026-10-03)
 
 - Declared recurring jobs from sidekiq-cron and sidekiq-scheduler, alongside
   Solid Queue's. sidekiq-cron jobs come from its schedule file
