@@ -68,11 +68,23 @@ module DeployAngel
         Array(tasks).filter_map do |key, task|
           next unless task.is_a?(Hash) && task["schedule"]
 
-          { "key" => key.to_s, "class" => task["class"]&.to_s, "schedule" => task["schedule"].to_s, "source" => "solid_queue",
+          schedule = { "key" => key.to_s, "class" => task["class"]&.to_s, "schedule" => task["schedule"].to_s, "source" => "solid_queue",
             "time_zone" => scheduler_time_zone }
+          schedule["runs_as"] = command_job_class if task["class"].nil? && task["command"]
+          schedule
         end
       rescue StandardError
         []
+      end
+
+      # A command task runs as a job of this class, so its runs show up in
+      # job telemetry under that name.
+      def command_job_class
+        if defined?(::SolidQueue::RecurringTask) && ::SolidQueue::RecurringTask.respond_to?(:default_job_class)
+          ::SolidQueue::RecurringTask.default_job_class&.name
+        end || "SolidQueue::RecurringJob"
+      rescue StandardError
+        "SolidQueue::RecurringJob"
       end
 
       # The zone Solid Queue reads a schedule in when the schedule names

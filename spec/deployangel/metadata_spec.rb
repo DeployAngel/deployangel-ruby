@@ -49,8 +49,18 @@ RSpec.describe DeployAngel::Rails::Metadata do
     expect(metadata.schedules).to eq([
       { "key" => "nightly_invoices", "class" => "NightlyInvoiceJob", "schedule" => "at 3am every day", "source" => "solid_queue",
         "time_zone" => nil },
-      { "key" => "cleanup", "class" => nil, "schedule" => "every hour", "source" => "solid_queue", "time_zone" => nil }
+      { "key" => "cleanup", "class" => nil, "schedule" => "every hour", "source" => "solid_queue", "time_zone" => nil,
+        "runs_as" => "SolidQueue::RecurringJob" }
     ])
+  end
+
+  it "says which job class a command task runs as, following Solid Queue's setting" do
+    FileUtils.mkdir_p(File.join(@root, "config"))
+    File.write(File.join(@root, "config/recurring.yml"), "cleanup:\n  command: \"Thing.cleanup\"\n  schedule: every hour\n")
+    wrapper = Class.new { def self.name = "CustomRecurringJob" }
+    stub_const("SolidQueue::RecurringTask", Class.new { define_singleton_method(:default_job_class) { wrapper } })
+
+    expect(metadata.schedules.sole).to include("class" => nil, "runs_as" => "CustomRecurringJob")
   end
 
   it "reports the time zone Solid Queue reads schedules in" do
