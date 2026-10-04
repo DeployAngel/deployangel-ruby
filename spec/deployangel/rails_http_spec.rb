@@ -43,6 +43,29 @@ RSpec.describe DeployAngel::Rails::Http do
     expect(recorded).to be_empty
   end
 
+  it "leaves out the health-check gems' controllers too" do
+    %w[ok_computer/ok_computer health_check/health_check healthcheck/healthchecks].each do |controller|
+      app = lambda do |env|
+        env["action_dispatch.request.path_parameters"] = { controller: controller, action: "show" }
+        [ 200, {}, [ "ok" ] ]
+      end
+      call(app)
+    end
+
+    expect(recorded).to be_empty
+  end
+
+  it "leaves out routes the app ignores, and HEAD requests to them" do
+    allow(DeployAngel).to receive(:configuration)
+      .and_return(DeployAngel::Configuration.new({}).tap { |config| config.ignored_routes = [ "GET /healthz" ] })
+    app = ->(_env) { [ 200, {}, [ "ok" ] ] }
+    call(app, "action_dispatch.route_uri_pattern" => "/healthz(.:format)")
+    call(app, "REQUEST_METHOD" => "HEAD", "action_dispatch.route_uri_pattern" => "/healthz(.:format)")
+    call(app, "action_dispatch.route_uri_pattern" => "/users/:id(.:format)")
+
+    expect(recorded.map { |request| request[:route_key] }).to eq([ "GET /users/:id" ])
+  end
+
   it "marks exceptions rendered by Rails as unhandled" do
     app = ->(env) { env["action_dispatch.exception"] = RuntimeError.new; [ 500, {}, [] ] }
     call(app, "action_dispatch.route_uri_pattern" => "/users/:id(.:format)")

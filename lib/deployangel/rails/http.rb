@@ -7,10 +7,12 @@ module DeployAngel
     # never the raw path, which keeps IDs out of route keys.
     class Http
       FORMAT_SUFFIX = "(.:format)"
-      # Rails' health check (/up by default). Load balancers and uptime
-      # monitors call it all the time and it always answers fast, so
-      # counting it would make any app look busy and healthy.
-      HEALTH_CHECK_CONTROLLER = "rails/health"
+      # Health checks: Rails' own (/up by default), OkComputer, health_check,
+      # and rails-healthcheck, wherever they're mounted. Load balancers and
+      # uptime monitors call them all the time and they answer fast, so
+      # counting them would make any app look busy and healthy. Others can
+      # be left out with config.ignored_routes.
+      HEALTH_CHECK_CONTROLLERS = %w[rails/health ok_computer/ok_computer health_check/health_check healthcheck/healthchecks].freeze
 
       def initialize(app)
         @app = app
@@ -35,9 +37,10 @@ module DeployAngel
 
       private
         def record(env, status, started, unhandled:, exception: nil)
-          return if env["action_dispatch.request.path_parameters"]&.dig(:controller) == HEALTH_CHECK_CONTROLLER
+          return if HEALTH_CHECK_CONTROLLERS.include?(env["action_dispatch.request.path_parameters"]&.dig(:controller))
 
           route = route_key(env)
+          return if route && DeployAngel.configuration.ignored_route?(route)
           # Unrouted successes are static files and similar; unrouted
           # errors (such as routing 404s) still count.
           return if route.nil? && status.to_i < 400

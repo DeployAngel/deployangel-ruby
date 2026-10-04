@@ -34,6 +34,14 @@ RSpec.describe DeployAngel::Rails::Metadata do
     expect(metadata.routes.first).to include("controller" => "users", "action" => "show")
   end
 
+  it "leaves out health-check gems' routes and ignored routes, so they're never expected to run" do
+    routes << FakeRoute.new("GET", "/health_check(/:checks)(.:format)", { controller: "health_check/health_check", action: "index" })
+    routes << FakeRoute.new("GET", "/healthz(.:format)", { controller: "status", action: "show" })
+    config.ignored_routes = [ "GET /healthz" ]
+
+    expect(metadata.routes.map { |r| r["key"] }).to eq([ "GET /users/:id", "GET /password_resets", "POST /password_resets" ])
+  end
+
   it "reads Solid Queue recurring schedules for the current environment" do
     FileUtils.mkdir_p(File.join(@root, "config"))
     File.write(File.join(@root, "config/recurring.yml"), <<~YAML)

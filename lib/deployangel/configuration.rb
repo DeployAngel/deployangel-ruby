@@ -11,7 +11,7 @@ module DeployAngel
 
     attr_accessor :token, :endpoint, :enabled, :environments, :release_version, :revision,
       :flush_interval, :open_timeout, :read_timeout, :max_queued_payloads, :max_routes, :logger,
-      :file_digests, :critical_flows
+      :file_digests, :critical_flows, :ignored_routes
 
     def initialize(env = ENV)
       @token = env["DEPLOYANGEL_TOKEN"]
@@ -28,6 +28,8 @@ module DeployAngel
       @logger = Logger.new($stderr, level: Logger::WARN, progname: "deployangel")
       @file_digests = parse_boolean(env["DEPLOYANGEL_FILE_DIGESTS"]) != false
       @critical_flows = {}
+      # Route keys as the dashboard shows them, such as "GET /healthz".
+      @ignored_routes = []
     end
 
     # Reports only with a token. By default only in the listed
@@ -37,6 +39,14 @@ module DeployAngel
       return enabled unless enabled.nil?
 
       environments.include?(environment.to_s)
+    end
+
+    # Whether requests to a route are left out. Rails answers HEAD with the
+    # GET route, so ignoring "GET /healthz" ignores "HEAD /healthz" too.
+    def ignored_route?(key)
+      return false if ignored_routes.empty?
+
+      ignored_routes.include?(key) || ignored_routes.include?(key.sub(/\AHEAD /, "GET "))
     end
 
     private

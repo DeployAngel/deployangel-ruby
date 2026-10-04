@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Health checks from OkComputer, health_check, and rails-healthcheck are left
+  out like Rails' own, wherever they're mounted.
+- `config.ignored_routes` leaves out other routes, such as a health check
+  served by your own controller: `[ "GET /healthz" ]`. HEAD requests to a
+  listed GET route are left out too, and listed routes aren't sent in the
+  route table, so DeployAngel never expects them to run.
+
 ## 0.1.6 (2026-10-04)
 
 - Requests to Rails' health check (`rails/health#show`, at `/up` by default)

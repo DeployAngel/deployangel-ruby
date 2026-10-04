@@ -111,6 +111,19 @@ DeployAngel.configure do |config|
 end
 ```
 
+Health checks aren't recorded: load balancers and uptime monitors call them
+all the time and they always answer fast, so they would make your app look
+busier and healthier than its real pages. The agent recognizes Rails' own
+(`/up`), OkComputer, health_check, and rails-healthcheck, wherever they're
+mounted. If your health check is your own controller, list its route the way
+the dashboard shows it. HEAD requests to it are left out too:
+
+```ruby
+DeployAngel.configure do |config|
+  config.ignored_routes = [ "GET /healthz" ]
+end
+```
+
 `DEPLOYANGEL_ENABLED=true|false` forces reporting on or off in any environment.
 `DEPLOYANGEL_URL` overrides the API endpoint (default `https://api.deployangel.com`).
 

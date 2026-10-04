@@ -40,12 +40,13 @@ module DeployAngel
         @app.routes.routes.flat_map do |route|
           controller = route.defaults[:controller]
           next [] if controller.nil? || controller.start_with?("rails/", "active_storage/", "action_mailbox/")
+          next [] if Http::HEALTH_CHECK_CONTROLLERS.include?(controller)
 
           path = route.path.spec.to_s.delete_suffix(FORMAT_SUFFIX)
           route.verb.to_s.split("|").reject(&:empty?).map do |verb|
             { "key" => "#{verb} #{path}", "controller" => controller, "action" => route.defaults[:action].to_s }
           end
-        end.uniq { |route| route["key"] }
+        end.uniq { |route| route["key"] }.reject { |route| @config.ignored_route?(route["key"]) }
       rescue StandardError
         []
       end
