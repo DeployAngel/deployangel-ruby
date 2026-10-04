@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 (2026-10-04)
 
 - Requests to Rails' health check (`rails/health#show`, at `/up` by default)
   are no longer recorded, wherever it's mounted. Load balancers and uptime
