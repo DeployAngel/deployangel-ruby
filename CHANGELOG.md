@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.10 (2026-10-04)
 
 - `config.exception_messages = false` (or `DEPLOYANGEL_EXCEPTION_MESSAGES=false`)
   sends exceptions with their class, fingerprint, and application frames, and
