@@ -104,4 +104,34 @@ RSpec.describe DeployAngel::Release do
   it "is unknown when nothing identifies the release" do
     expect(described_class.resolve(config: config, env: {})).to be_unknown
   end
+
+  describe "ECS" do
+    let(:env) { { "ECS_CONTAINER_METADATA_URI_V4" => "http://169.254.170.2/v4/abc" } }
+
+    def resolve(metadata, root: nil)
+      body = metadata && JSON.generate(metadata)
+      described_class.resolve(config: config, env: env, root: root, http: ->(uri) { body if uri == env["ECS_CONTAINER_METADATA_URI_V4"] })
+    end
+
+    it "reads the release from the image tag: the commit when it looks like one, else the version" do
+      expect(resolve({ "Image" => "123.dkr.ecr.us-east-1.amazonaws.com/shop:3F2A9C1E" }).to_protocol)
+        .to eq("version" => nil, "commit" => "3f2a9c1e", "source" => "ecs")
+      expect(resolve({ "Image" => "123.dkr.ecr.us-east-1.amazonaws.com/shop:v1.4.2" }).to_protocol)
+        .to eq("version" => "v1.4.2", "commit" => nil, "source" => "ecs")
+    end
+
+    it "uses the image digest for a moving tag, or no tag" do
+      digest = "sha256:#{"ab12" * 16}"
+      expect(resolve({ "Image" => "shop:latest", "ImageID" => digest }).version).to eq("sha256:ab12ab12ab12")
+      expect(resolve({ "Image" => "shop@#{digest}", "ImageID" => digest }).version).to eq("sha256:ab12ab12ab12")
+    end
+
+    it "is unknown when the metadata can't be read, and a REVISION file wins" do
+      expect(resolve(nil)).to be_unknown
+      Dir.mktmpdir do |root|
+        File.write(File.join(root, "REVISION"), "81ac27d\n")
+        expect(resolve({ "Image" => "shop:v2" }, root: root).to_protocol).to include("commit" => "81ac27d", "source" => "revision_file")
+      end
+    end
+  end
 end

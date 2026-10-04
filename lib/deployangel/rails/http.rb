@@ -25,6 +25,7 @@ module DeployAngel
         return @app.call(env) unless DeployAngel.recording?
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        Redaction.request_host = env["HTTP_HOST"]
         begin
           status, headers, body = @app.call(env)
         rescue Exception => e # rubocop:disable Lint/RescueException -- recorded, then re-raised untouched

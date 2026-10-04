@@ -21,13 +21,15 @@ module DeployAngel
 
     module_function
 
-    def for(exception, root:)
+    # message: false leaves the message out entirely. redactions are
+    # [value, placeholder] pairs replaced first (Redaction).
+    def for(exception, root:, message: true, redactions: [])
       frame = top_frame(exception, root: root)
       {
         "fingerprint" => Digest::SHA256.hexdigest([ "v#{VERSION}", exception.class.name, frame ].join("|"))[0, 32],
         "fingerprint_version" => VERSION,
         "exception_class" => exception.class.name,
-        "message" => normalize_message(exception.message),
+        "message" => (normalize_message(exception.message, redactions) if message),
         "top_frame" => frame,
         "app_frame" => app_frame?(frame)
       }
@@ -50,8 +52,13 @@ module DeployAngel
         .map { |path, label| "#{normalize_path(path, root)}##{label}" }
     end
 
-    def normalize_message(message)
+    # Only quoted values, numbers, emails, UUIDs, and long hex are replaced;
+    # unquoted words, such as a name in a message the app builds, are kept.
+    def normalize_message(message, redactions = [])
       text = message.to_s.lines.first.to_s.strip
+      redactions.each do |value, placeholder|
+        text = text.gsub(/(?<![[:alnum:]])#{Regexp.escape(value)}(?![[:alnum:]])/i, placeholder)
+      end
       MESSAGE_PLACEHOLDERS.each { |pattern, placeholder| text = text.gsub(pattern, placeholder) }
       text[0, MAX_MESSAGE]
     end

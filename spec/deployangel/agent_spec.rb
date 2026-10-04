@@ -153,4 +153,39 @@ RSpec.describe DeployAngel::Agent do
       "top_frame" => "app/controllers/orders_controller.rb#create", "sources" => { "route:POST /orders" => 1 })
     expect(exception["backtrace"]).to eq([ "app/controllers/orders_controller.rb#create" ])
   end
+
+  describe "exception messages" do
+    let(:agent) do
+      described_class.new(config: config, environment: "production", env: {}, transport: transport, clock: clock, root: "/app")
+        .tap { |agent| allow(agent).to receive(:start_reporter) }
+    end
+
+    after { Thread.current[DeployAngel::Redaction::HOST] = Thread.current[DeployAngel::Redaction::TENANTS] = nil }
+
+    def sent_exception(message)
+      error = RuntimeError.new(message)
+      error.set_backtrace([ "/app/app/models/loan.rb:7:in 'Loan#approve'" ])
+      agent.record_exception(error)
+      clock.advance(60)
+      agent.flush
+      transport.posts.sole.last["exceptions"].sole
+    end
+
+    it "replaces the request's host and the tenants the thread switched to" do
+      DeployAngel::Redaction.request_host = "acme.lendwell.com:443"
+      DeployAngel::Redaction.note_tenant("acme_lending")
+
+      expect(sent_exception("Cannot find tenant for host acme.lendwell.com; Could not find schema production_acme_lending")["message"])
+        .to eq("Cannot find tenant for host <host>; Could not find schema production_<tenant>")
+    end
+
+    it "sends none at all when they're turned off, keeping the fingerprint" do
+      config.exception_messages = false
+
+      exception = sent_exception("Validation failed: Last name Nguyen-Smith is reserved")
+      expect(exception).not_to have_key("message")
+      expect(exception).to include("exception_class" => "RuntimeError", "top_frame" => "app/models/loan.rb#approve")
+      expect(exception["fingerprint"]).to match(/\A\h{32}\z/)
+    end
+  end
 end

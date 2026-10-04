@@ -1,15 +1,22 @@
 # frozen_string_literal: true
 
+require "json"
+require "net/http"
+require "uri"
+
 module DeployAngel
   # Which release this process is running, resolved once at boot so that
   # telemetry can be attributed to a deployment.
   class Release < Struct.new(:version, :commit, :source)
     COMMIT_FORMAT = /\A[0-9a-f]{7,40}\z/
 
+    # Tags that move from build to build, so they can't identify a release.
+    MOVING_TAGS = %w[latest main master production prod staging stable release].freeze
+
     # Order: explicit configuration, Heroku dyno metadata, the hosting
     # platform's own variables (Kamal, Render, Fly.io, Railway, Coolify, and
-    # Dokku's GIT_REV), then a REVISION file.
-    def self.resolve(config:, env: ENV, root: nil)
+    # Dokku's GIT_REV), a REVISION file, then ECS container metadata.
+    def self.resolve(config:, env: ENV, root: nil, http: method(:fetch_metadata))
       if present?(config.release_version) || present?(config.revision)
         build(config.release_version, config.revision, "config")
       elsif present?(env["HEROKU_RELEASE_VERSION"]) || present?(env["HEROKU_SLUG_COMMIT"])
@@ -29,6 +36,8 @@ module DeployAngel
         build(nil, env["GIT_REV"], "git_rev")
       elsif root && File.file?(revision_path = File.join(root, "REVISION"))
         build(nil, File.read(revision_path, 100), "revision_file")
+      elsif present?(env["ECS_CONTAINER_METADATA_URI_V4"]) && (release = ecs(http.call(env["ECS_CONTAINER_METADATA_URI_V4"])))
+        release
       else
         new(nil, nil, "unknown")
       end
@@ -62,6 +71,38 @@ module DeployAngel
       name = image_ref.to_s.strip.split("@", 2).first.to_s.split("/").last.to_s
       tag = name.split(":", 2)[1].to_s.delete_prefix("deployment-")
       tag unless tag.empty?
+    end
+
+    # ECS (Fargate, and EC2 with a recent agent) serves each container's
+    # metadata at ECS_CONTAINER_METADATA_URI_V4. The image tag identifies the
+    # release, and is the commit when it looks like one. A moving tag such
+    # as "latest" can't, so the image digest does instead.
+    def self.ecs(body)
+      data = JSON.parse(body.to_s)
+      return unless data.is_a?(Hash)
+
+      tag = data["Image"].to_s.split("@", 2).first.to_s.split("/").last.to_s.split(":", 2)[1].to_s.strip
+      if tag.downcase.match?(COMMIT_FORMAT)
+        build(nil, tag, "ecs")
+      elsif present?(tag) && !MOVING_TAGS.include?(tag.downcase)
+        build(tag, nil, "ecs")
+      elsif (digest = data["ImageID"].to_s[/\Asha256:(\h{12})/, 1])
+        build("sha256:#{digest}", nil, "ecs")
+      end
+    rescue JSON::ParserError
+      nil
+    end
+
+    # One request at boot to the container's own metadata endpoint, which
+    # is local, so the timeouts are short. Nil on any failure.
+    def self.fetch_metadata(uri)
+      uri = URI.parse(uri)
+      Net::HTTP.start(uri.host, uri.port, open_timeout: 0.5, read_timeout: 1) do |http|
+        response = http.get(uri.request_uri)
+        response.body if response.is_a?(Net::HTTPSuccess)
+      end
+    rescue StandardError
+      nil
     end
 
     # The cloud rejects malformed commits, which would drop every payload,

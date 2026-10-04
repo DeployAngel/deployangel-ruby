@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- `config.exception_messages = false` (or `DEPLOYANGEL_EXCEPTION_MESSAGES=false`)
+  sends exceptions with their class, fingerprint, and application frames, and
+  no message. Grouping and verdicts work the same.
+- The request's host is replaced with `<host>` in exception messages, and with
+  ros-apartment, so are the tenants the request or job switched to
+  (`<tenant>`), including one that turned out not to exist. The default tenant
+  is left alone.
+- ECS, including Fargate: the release comes from the container's image, read
+  once at boot from `ECS_CONTAINER_METADATA_URI_V4`. A tag that's a commit is
+  the commit, another tag is the version, and a moving tag such as `latest` uses
+  the image digest. `DEPLOYANGEL_REVISION` and a `REVISION` file still win.
+
 ## 0.1.9 (2026-10-04)
 
 - A 4xx response to a request no route matched, such as a bot probing

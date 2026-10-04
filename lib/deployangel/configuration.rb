@@ -11,7 +11,7 @@ module DeployAngel
 
     attr_accessor :token, :endpoint, :enabled, :environments, :release_version, :revision,
       :flush_interval, :open_timeout, :read_timeout, :max_queued_payloads, :max_routes, :logger,
-      :file_digests, :critical_flows, :ignored_routes, :sidekiq_cron_schedule_file
+      :file_digests, :critical_flows, :ignored_routes, :sidekiq_cron_schedule_file, :exception_messages
 
     def initialize(env = ENV)
       @token = env["DEPLOYANGEL_TOKEN"]
@@ -27,6 +27,9 @@ module DeployAngel
       @max_routes = 100
       @logger = Logger.new($stderr, level: Logger::WARN, progname: "deployangel")
       @file_digests = parse_boolean(env["DEPLOYANGEL_FILE_DIGESTS"]) != false
+      # Off, exceptions are sent with their class and frames only, never a
+      # message, for apps whose messages may hold personal or health data.
+      @exception_messages = parse_boolean(env["DEPLOYANGEL_EXCEPTION_MESSAGES"]) != false
       @critical_flows = {}
       # Route keys as the dashboard shows them, such as "GET /healthz".
       @ignored_routes = []

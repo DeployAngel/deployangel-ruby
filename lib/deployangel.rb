@@ -3,6 +3,7 @@
 require_relative "deployangel/version"
 require_relative "deployangel/configuration"
 require_relative "deployangel/core/histogram"
+require_relative "deployangel/core/redaction"
 require_relative "deployangel/core/fingerprint"
 require_relative "deployangel/core/release"
 require_relative "deployangel/core/instance"
@@ -115,4 +116,5 @@ require_relative "deployangel/rails/active_job"
 require_relative "deployangel/rails/error_subscriber"
 require_relative "deployangel/rails/metadata"
 require_relative "deployangel/sidekiq"
+require_relative "deployangel/apartment"
 require_relative "deployangel/rails/railtie" if defined?(::Rails::Railtie)

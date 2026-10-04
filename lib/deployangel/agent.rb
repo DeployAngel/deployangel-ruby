@@ -91,7 +91,9 @@ module DeployAngel
 
       exception.instance_variable_set(SEEN, true) unless exception.frozen?
       start_reporter
-      @aggregator.record_exception(Fingerprint.for(exception, root: @root), source: source, handled: handled,
+      messages = config.exception_messages
+      details = Fingerprint.for(exception, root: @root, message: messages, redactions: messages ? Redaction.current : [])
+      @aggregator.record_exception(details, source: source, handled: handled,
         backtrace: Fingerprint.backtrace(exception, root: @root))
     rescue StandardError => e
       warn_once(:record_exception, "DeployAngel failed to record an exception: #{e.class}: #{e.message}")

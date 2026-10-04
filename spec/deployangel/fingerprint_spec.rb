@@ -48,6 +48,18 @@ RSpec.describe DeployAngel::Fingerprint do
     expect(message).to eq("User <n> (<email>) not found: <string> <hex>")
   end
 
+  it "keeps unquoted words, which only turning messages off removes" do
+    expect(described_class.normalize_message("Payment of 1250.00 failed for Jane Doe"))
+      .to eq("Payment of <n> failed for Jane Doe")
+  end
+
+  it "replaces redactions as whole words, ignoring case, before anything else" do
+    redactions = [ [ "acme.lendwell.com", "<host>" ], [ "acme", "<tenant>" ] ]
+
+    expect(described_class.normalize_message("Blocked host: ACME.lendwell.com for acme_x, not acmeco", redactions))
+      .to eq("Blocked host: <host> for <tenant>_x, not acmeco")
+  end
+
   it "keeps only application frames in representative backtraces" do
     error = exception_with([ "/usr/local/bundle/gems/rack-3.1.0/lib/rack.rb:1:in 'call'",
                              "/app/app/controllers/orders_controller.rb:7:in 'OrdersController#create'" ])

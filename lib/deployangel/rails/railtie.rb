@@ -21,6 +21,7 @@ module DeployAngel
       end
 
       config.after_initialize do |app|
+        DeployAngel::Apartment.install if DeployAngel.configuration.exception_messages
         agent = DeployAngel.start(
           environment: ::Rails.env,
           root: ::Rails.root.to_s,

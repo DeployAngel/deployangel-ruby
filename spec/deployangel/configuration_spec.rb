@@ -18,6 +18,11 @@ RSpec.describe DeployAngel::Configuration do
     expect(described_class.new({}).active?("production")).to be(false)
   end
 
+  it "sends exception messages unless DEPLOYANGEL_EXCEPTION_MESSAGES turns them off" do
+    expect(described_class.new({}).exception_messages).to be(true)
+    expect(described_class.new("DEPLOYANGEL_EXCEPTION_MESSAGES" => "false").exception_messages).to be(false)
+  end
+
   it "defaults to the hosted API" do
     expect(described_class.new({}).endpoint).to eq("https://api.deployangel.com")
   end

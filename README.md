@@ -34,9 +34,14 @@ The agent must know which release it is running. It finds it in this order:
    didn't come from GitHub
 7. Coolify: `SOURCE_COMMIT`. Dokku: `GIT_REV`
 8. a `REVISION` file in the app root, which Capistrano writes and any build step can
+9. ECS, including Fargate: the container's image, from the metadata endpoint ECS
+   provides (one local request at boot). The image tag is the release when it's a
+   commit or a version like `v1.4.2`; with a moving tag like `latest`, the image
+   digest is
 
-For other Docker deploys (compose, Swarm, ECS, Kubernetes), bake the commit into
-the image, since `.dockerignore` usually leaves `.git` out:
+For other Docker deploys (compose, Swarm, Kubernetes), and on ECS to see each
+release by its commit, bake the commit into the image, since `.dockerignore`
+usually leaves `.git` out:
 
 ```dockerfile
 ARG GIT_SHA
@@ -63,9 +68,13 @@ says so.
   middleware. Failures that `retry_on` or `discard_on` handle still count.
 - Release identity, runtime versions, and a per-process instance ID.
 
-- Exceptions: a stable fingerprint, the exception class, a sanitized message
-  (numbers, IDs, emails, and quoted values removed), and application frames
-  only.
+- Exceptions: a stable fingerprint, the exception class, the first line of the
+  message, and application frames only. In the message, numbers, IDs, emails,
+  UUIDs, long hex strings, and quoted values are replaced with placeholders, and
+  so are the request's host and, with ros-apartment, the tenants the request or
+  job switched to. Other words are kept: `Payment failed for Jane Doe` is sent
+  as it is. If your app's messages might hold personal or health data, [turn
+  messages off](#exception-messages).
 - Once per process: the route table, job classes, recurring schedules
   declared for Solid Queue, sidekiq-cron, or sidekiq-scheduler, critical
   flows, and file digests (relative paths and hashes, never file contents) so
@@ -140,6 +149,29 @@ DeployAngel.configure do |config|
 end
 ```
 
+`DEPLOYANGEL_ENABLED=true|false` forces reporting on or off in any environment.
+`DEPLOYANGEL_URL` overrides the API endpoint (default `https://api.deployangel.com`).
+
+### Exception messages
+
+To send exceptions without any message, only their class, fingerprint, and
+application frames:
+
+```ruby
+DeployAngel.configure do |config|
+  config.exception_messages = false # or DEPLOYANGEL_EXCEPTION_MESSAGES=false
+end
+```
+
+Grouping, new-exception detection, and verdicts work the same, since the
+fingerprint never uses the message. You lose the message text in the dashboard,
+notifications, and AI investigation. With messages off, what leaves your app is
+route patterns, counts, timings, job class names, exception classes, and
+application file paths and method names, plus the route table, job classes,
+schedules, and file digests described above.
+
+### Recurring jobs
+
 DeployAngel expects declared recurring jobs on schedule. It reads Solid Queue's
 `config/recurring.yml`, sidekiq-scheduler's section of Sidekiq's config, and
 sidekiq-cron's schedule file (`config/schedule.yml` unless sidekiq-cron is
@@ -155,9 +187,6 @@ end
 
 Jobs that exist only in Redis, such as ones created in code or in the
 Sidekiq web UI, aren't read.
-
-`DEPLOYANGEL_ENABLED=true|false` forces reporting on or off in any environment.
-`DEPLOYANGEL_URL` overrides the API endpoint (default `https://api.deployangel.com`).
 
 ## Checkpoints
 
