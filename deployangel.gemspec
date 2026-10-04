@@ -9,9 +9,10 @@ Gem::Specification.new do |spec|
   spec.email = [ "jordan@deployangel.com" ]
 
   spec.summary = "DeployAngel agent for Rails: production verification for every deployment."
-  spec.description = "Aggregates HTTP request behavior in-process and reports one small payload per " \
-    "process per minute to DeployAngel, which verifies each deployment and tells you when it is " \
-    "safe to stop watching it."
+  spec.description = "Aggregates HTTP requests, background jobs, exceptions, and recurring schedules " \
+    "in-process and reports one small payload per process per minute to DeployAngel, which verifies " \
+    "each deployment and tells you, or your coding agent, when a release is cleared and safe to stop " \
+    "watching. It never sends request bodies, parameters, SQL, or user data."
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1"
 
