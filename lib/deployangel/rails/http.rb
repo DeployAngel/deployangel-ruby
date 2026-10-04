@@ -7,6 +7,10 @@ module DeployAngel
     # never the raw path, which keeps IDs out of route keys.
     class Http
       FORMAT_SUFFIX = "(.:format)"
+      # Rails' health check (/up by default). Load balancers and uptime
+      # monitors call it all the time and it always answers fast, so
+      # counting it would make any app look busy and healthy.
+      HEALTH_CHECK_CONTROLLER = "rails/health"
 
       def initialize(app)
         @app = app
@@ -31,6 +35,8 @@ module DeployAngel
 
       private
         def record(env, status, started, unhandled:, exception: nil)
+          return if env["action_dispatch.request.path_parameters"]&.dig(:controller) == HEALTH_CHECK_CONTROLLER
+
           route = route_key(env)
           # Unrouted successes are static files and similar; unrouted
           # errors (such as routing 404s) still count.

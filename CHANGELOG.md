@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Requests to Rails' health check (`rails/health#show`, at `/up` by default)
+  are no longer recorded, wherever it's mounted. Load balancers and uptime
+  monitors call it all the time and it always answers fast, so it made apps
+  look busier and healthier than their real pages. DeployAngel already
+  leaves out `/up` from older agents.
+
 ## 0.1.5 (2026-10-03)
 
 - Declared recurring jobs from sidekiq-cron and sidekiq-scheduler, alongside

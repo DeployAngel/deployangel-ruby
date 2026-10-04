@@ -31,6 +31,18 @@ RSpec.describe DeployAngel::Rails::Http do
     expect(recorded.sole[:route_key]).to eq("GET users#show")
   end
 
+  it "leaves out Rails' health check wherever it's mounted, since monitors call it all the time" do
+    # The router sets the path parameters while the request is handled.
+    app = lambda do |env|
+      env["action_dispatch.request.path_parameters"] = { controller: "rails/health", action: "show" }
+      env["action_dispatch.route_uri_pattern"] = "/healthz(.:format)"
+      [ 200, {}, [ "ok" ] ]
+    end
+    call(app)
+
+    expect(recorded).to be_empty
+  end
+
   it "marks exceptions rendered by Rails as unhandled" do
     app = ->(env) { env["action_dispatch.exception"] = RuntimeError.new; [ 500, {}, [] ] }
     call(app, "action_dispatch.route_uri_pattern" => "/users/:id(.:format)")
