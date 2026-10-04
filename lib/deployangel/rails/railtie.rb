@@ -29,7 +29,7 @@ module DeployAngel
           framework_version: ::Rails.version,
           logger: ::Rails.logger
         )
-        agent&.metadata = DeployAngel::Rails::Metadata.new(app: app, config: DeployAngel.configuration, root: ::Rails.root.to_s)
+        agent&.metadata = DeployAngel::Rails::Metadata.new(app: app, config: DeployAngel.configuration, root: ::Rails.root.to_s, environment: ::Rails.env)
       end
     end
   end

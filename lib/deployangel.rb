@@ -111,9 +111,11 @@ module DeployAngel
   end
 end
 
+require_relative "deployangel/rack/http"
 require_relative "deployangel/rails/http"
 require_relative "deployangel/rails/active_job"
 require_relative "deployangel/rails/error_subscriber"
+require_relative "deployangel/metadata"
 require_relative "deployangel/rails/metadata"
 require_relative "deployangel/sidekiq"
 require_relative "deployangel/apartment"
