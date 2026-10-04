@@ -13,6 +13,9 @@ module DeployAngel
       # counting them would make any app look busy and healthy. Others can
       # be left out with config.ignored_routes.
       HEALTH_CHECK_CONTROLLERS = %w[rails/health ok_computer/ok_computer health_check/health_check healthcheck/healthchecks].freeze
+      # Health checks served by a lambda or a mounted Rack app rather than a
+      # controller, at a conventional path such as /healthz.
+      HEALTH_CHECK_PATHS = %w[up health healthz healthcheck health_check livez readyz statusz ping].freeze
 
       def initialize(app)
         @app = app
@@ -37,7 +40,7 @@ module DeployAngel
 
       private
         def record(env, status, started, unhandled:, exception: nil)
-          return if HEALTH_CHECK_CONTROLLERS.include?(env["action_dispatch.request.path_parameters"]&.dig(:controller))
+          return if health_check?(env)
 
           route = route_key(env)
           return if route && DeployAngel.configuration.ignored_route?(route)
@@ -55,6 +58,16 @@ module DeployAngel
           )
         rescue StandardError
           nil
+        end
+
+        # A controller at a health-check path may be a real page, so only
+        # controllerless routes are judged by their path.
+        def health_check?(env)
+          controller = env["action_dispatch.request.path_parameters"]&.dig(:controller)
+          return HEALTH_CHECK_CONTROLLERS.include?(controller) if controller
+
+          pattern = route_pattern(env) or return false
+          HEALTH_CHECK_PATHS.include?(pattern.delete_suffix(FORMAT_SUFFIX).split("/").last)
         end
 
         def route_key(env)

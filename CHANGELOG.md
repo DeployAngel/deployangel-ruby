@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Health checks served by a lambda or a mounted Rack app at a conventional
+  path (`/up`, `/health`, `/healthz`, `/healthcheck`, `/health_check`,
+  `/livez`, `/readyz`, `/statusz`, `/ping`) are left out, like the health-check
+  gems'. A controller at one of these paths is still recorded, since it may be
+  a real page.
+- `config.sidekiq_cron_schedule_file` reads sidekiq-cron jobs from the file an
+  app loads them from itself, such as `config/sidekiq_schedule.yml.erb` passed
+  to `Sidekiq::Cron::Job.load_from_hash!`. ERB is rendered, as in the default
+  file.
+
 ## 0.1.7 (2026-10-04)
 
 - Health checks from OkComputer, health_check, and rails-healthcheck are left

@@ -122,6 +122,26 @@ RSpec.describe DeployAngel::Rails::Metadata do
       expect(metadata.schedules.sole).to include("key" => "hourly_sync", "class" => "SyncJob", "schedule" => "0 * * * *")
     end
 
+    it "reads the file an app loads sidekiq-cron's jobs from itself, rendering its ERB" do
+      stub_const("Sidekiq::Cron", Module.new)
+      config.sidekiq_cron_schedule_file = "config/sidekiq_schedule.yml.erb"
+      write("config/sidekiq_schedule.yml.erb", <<~YAML)
+        alerts:
+          cron: "* * * * *"
+          class: AlertsWorker
+          status: "<%= "enabled" %>"
+        salary_stats:
+          cron: "0 0 * * * America/New_York"
+          class: SalaryStatsWorker
+          status: "<%= "disabled" %>"
+      YAML
+
+      expect(metadata.schedules).to eq([
+        { "key" => "alerts", "class" => "AlertsWorker", "schedule" => "* * * * *", "source" => "sidekiq_cron",
+          "time_zone" => "America/New_York" }
+      ])
+    end
+
     it "ignores a schedule file when sidekiq-cron isn't loaded" do
       write("config/schedule.yml", "nightly:\n  cron: \"0 3 * * *\"\n  class: NightlyJob\n")
 

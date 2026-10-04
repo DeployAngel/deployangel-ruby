@@ -86,8 +86,10 @@ module DeployAngel
       end
 
       # sidekiq-cron jobs from its schedule file (config/schedule.yml unless
-      # configured otherwise), which it loads when Sidekiq starts. Jobs
-      # created in code live only in Redis, which the agent doesn't read.
+      # configured otherwise), which it loads when Sidekiq starts, or from
+      # the file in config.sidekiq_cron_schedule_file for an app that loads
+      # them itself. Jobs created in code live only in Redis, which the agent
+      # doesn't read.
       def sidekiq_cron_schedules
         return [] unless defined?(::Sidekiq::Cron)
 
@@ -105,7 +107,8 @@ module DeployAngel
       end
 
       def sidekiq_cron_schedule_file
-        configured = ::Sidekiq::Cron.configuration.cron_schedule_file if ::Sidekiq::Cron.respond_to?(:configuration)
+        configured = @config.sidekiq_cron_schedule_file
+        configured ||= ::Sidekiq::Cron.configuration.cron_schedule_file if ::Sidekiq::Cron.respond_to?(:configuration)
         File.expand_path(configured || "config/schedule.yml", @root)
       rescue StandardError
         File.join(@root, "config", "schedule.yml")

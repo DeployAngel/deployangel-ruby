@@ -75,6 +75,17 @@ says so.
 It does not send request bodies, parameters, headers, cookies, SQL, logs, or
 user data.
 
+## Data and pricing
+
+- Everything goes to DeployAngel's hosted service, which runs on DigitalOcean
+  in the United States. There's no self-hosted version, and no choice of
+  region.
+- Telemetry is kept for 21 days, and release history for 7, 30, or 90 days
+  depending on the plan. The [privacy policy](https://deployangel.com/privacy)
+  has the details and the services DeployAngel uses.
+- DeployAngel is free during the beta, with notice before paid plans start.
+  See [pricing](https://deployangel.com/pricing).
+
 ## Safety
 
 - Nothing runs on the network during a request. Requests only update
@@ -117,14 +128,33 @@ Health checks aren't recorded: load balancers and uptime monitors call them
 all the time and they always answer fast, so they would make your app look
 busier and healthier than its real pages. The agent recognizes Rails' own
 (`/up`), OkComputer, health_check, and rails-healthcheck, wherever they're
-mounted. If your health check is your own controller, list its route the way
-the dashboard shows it. HEAD requests to it are left out too:
+mounted, and a lambda or Rack app at a conventional path (`/up`, `/health`,
+`/healthz`, `/healthcheck`, `/health_check`, `/livez`, `/readyz`, `/statusz`,
+`/ping`), such as `get "healthz", to: ->(_) { [200, {}, ["ok"]] }`. If your
+health check is your own controller, list its route the way the dashboard
+shows it. HEAD requests to it are left out too:
 
 ```ruby
 DeployAngel.configure do |config|
   config.ignored_routes = [ "GET /healthz" ]
 end
 ```
+
+DeployAngel expects declared recurring jobs on schedule. It reads Solid Queue's
+`config/recurring.yml`, sidekiq-scheduler's section of Sidekiq's config, and
+sidekiq-cron's schedule file (`config/schedule.yml` unless sidekiq-cron is
+configured otherwise), rendering ERB in each. If your app loads sidekiq-cron
+jobs itself from another file, for example with `Sidekiq::Cron::Job.load_from_hash!`,
+point the agent at that file:
+
+```ruby
+DeployAngel.configure do |config|
+  config.sidekiq_cron_schedule_file = "config/sidekiq_schedule.yml.erb"
+end
+```
+
+Jobs that exist only in Redis, such as ones created in code or in the
+Sidekiq web UI, aren't read.
 
 `DEPLOYANGEL_ENABLED=true|false` forces reporting on or off in any environment.
 `DEPLOYANGEL_URL` overrides the API endpoint (default `https://api.deployangel.com`).

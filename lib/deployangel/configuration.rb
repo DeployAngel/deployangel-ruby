@@ -11,7 +11,7 @@ module DeployAngel
 
     attr_accessor :token, :endpoint, :enabled, :environments, :release_version, :revision,
       :flush_interval, :open_timeout, :read_timeout, :max_queued_payloads, :max_routes, :logger,
-      :file_digests, :critical_flows, :ignored_routes
+      :file_digests, :critical_flows, :ignored_routes, :sidekiq_cron_schedule_file
 
     def initialize(env = ENV)
       @token = env["DEPLOYANGEL_TOKEN"]
@@ -30,6 +30,9 @@ module DeployAngel
       @critical_flows = {}
       # Route keys as the dashboard shows them, such as "GET /healthz".
       @ignored_routes = []
+      # For an app that loads sidekiq-cron's jobs itself (load_from_hash!)
+      # from its own file, such as "config/sidekiq_schedule.yml.erb".
+      @sidekiq_cron_schedule_file = nil
     end
 
     # Reports only with a token. By default only in the listed

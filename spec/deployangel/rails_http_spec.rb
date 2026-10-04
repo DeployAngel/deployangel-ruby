@@ -55,6 +55,16 @@ RSpec.describe DeployAngel::Rails::Http do
     expect(recorded).to be_empty
   end
 
+  it "leaves out health checks served by a lambda at a conventional path, but not a controller there" do
+    app = ->(_env) { [ 200, {}, [ "ok" ] ] }
+    %w[/health /healthz /statusz /api/livez(.:format)].each { |path| call(app, "action_dispatch.route_uri_pattern" => path) }
+    call(app, "action_dispatch.route_uri_pattern" => "/health(.:format)",
+      "action_dispatch.request.path_parameters" => { controller: "articles", action: "health" })
+    call(app, "action_dispatch.route_uri_pattern" => "/webhooks(.:format)")
+
+    expect(recorded.map { |request| request[:route_key] }).to eq([ "GET /health", "GET /webhooks" ])
+  end
+
   it "leaves out routes the app ignores, and HEAD requests to them" do
     allow(DeployAngel).to receive(:configuration)
       .and_return(DeployAngel::Configuration.new({}).tap { |config| config.ignored_routes = [ "GET /healthz" ] })
