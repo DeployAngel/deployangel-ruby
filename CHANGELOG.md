@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.9 (2026-10-04)
 
 - A 4xx response to a request no route matched, such as a bot probing
   `/wp-admin` or `.env`, or middleware turning a request away before
