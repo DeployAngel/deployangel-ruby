@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.8 (2026-10-04)
 
 - Health checks served by a lambda or a mounted Rack app at a conventional
   path (`/up`, `/health`, `/healthz`, `/healthcheck`, `/health_check`,
