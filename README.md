@@ -45,8 +45,10 @@ ENV DEPLOYANGEL_REVISION=$GIT_SHA
 
 and build with `docker build --build-arg GIT_SHA=$(git rev-parse HEAD) .`. On
 DigitalOcean App Platform, set `DEPLOYANGEL_REVISION: ${_self.COMMIT_HASH}` in
-the app spec. If the agent finds none of these, its telemetry can't be tied to a
-deploy, and the dashboard says so.
+the app spec. On Elastic Beanstalk, see
+[Deploying to Elastic Beanstalk](#deploying-to-elastic-beanstalk). If the agent
+finds none of these, its telemetry can't be tied to a deploy, and the dashboard
+says so.
 
 ## What it sends
 
@@ -182,6 +184,28 @@ to the run. Explicit options still win.
     DEPLOYANGEL_API_TOKEN: ${{ secrets.DEPLOYANGEL_API_TOKEN }}
 ```
 
+### When a release never reports
+
+A registered release must start reporting within 15 minutes of being
+registered. If no instance reports it by then, the verdict is
+**inconclusive** with reason `no_release_telemetry`, and the dashboard says
+"Not cleared: this release never reported". The usual causes are a release
+that never booted (a failed migration or a crash on start), an agent with no
+token, or a release identity the agent can't find. If the app kept reporting
+an earlier release instead, the verdict names it ("while v41 kept running").
+`deployangel verify --wait` exits 2, so the CI step above fails the job.
+
+If the release does start reporting within 24 hours, as after a slow rolling
+deploy, DeployAngel withdraws that verdict and verifies the release from then,
+unless a newer release has rolled out first. A CI job that already failed stays
+failed; run `deployangel verify --wait` again to wait for the new verdict.
+
+Only registered releases are caught this way. DeployAngel learns about an
+unregistered release when the agent first reports it, so a release that never
+boots is never seen. If a release that dies on boot is a risk for you, register
+deploys from CI. The 15 minutes count from registration, so register when the
+deploy finishes, not when it starts.
+
 ### Deploying with Kamal
 
 The agent reads `KAMAL_VERSION`, so it knows its release with no setup. Pass
@@ -233,6 +257,35 @@ set :deployangel_register, false      # turn it off, e.g. for a stage without De
 
 With `:deployangel_wait`, `cap` exits with an error if the release fails
 verification, which CI can act on. It never rolls anything back.
+
+### Deploying to Elastic Beanstalk
+
+Elastic Beanstalk doesn't tell the app which commit it's running. Set
+`DEPLOYANGEL_REVISION` in the same `update-environment` call that deploys the
+new version, so the two always change together. This works on every platform,
+Docker included, with no build args. Then wait for the environment and register
+the release:
+
+```bash
+aws elasticbeanstalk update-environment \
+  --environment-name "$EB_ENV" \
+  --version-label "$VERSION_LABEL" \
+  --option-settings "Namespace=aws:elasticbeanstalk:application:environment,OptionName=DEPLOYANGEL_REVISION,Value=$GITHUB_SHA"
+aws elasticbeanstalk wait environment-updated --environment-names "$EB_ENV"
+
+bundle exec deployangel release --commit="$GITHUB_SHA" --version="$VERSION_LABEL"
+bundle exec deployangel verify --wait --until=initial
+```
+
+`update-environment` returns as soon as the deploy starts, so don't skip the
+wait: registering early starts the
+[15-minute clock](#when-a-release-never-reports) before the new version is
+running. If the deploy fails and Beanstalk rolls back, the environment still
+returns to Ready, but the new commit never reports, so `verify` exits 2.
+
+Leave `DEPLOYANGEL_RELEASE_VERSION` unset here. When the agent reports a
+version, the release is matched by it, so it would have to equal `--version`
+exactly. Matching by commit avoids that.
 
 ## CLI and coding agents
 
