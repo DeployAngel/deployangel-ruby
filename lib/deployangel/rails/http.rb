@@ -26,12 +26,16 @@ module DeployAngel
         end
 
         # A controller at a health-check path may be a real page, so only
-        # controllerless routes are judged by their path.
+        # controllerless routes (a lambda or a mounted Rack app) are judged by
+        # their path, by its last segment as in 0.1.8. A controller decides
+        # anything else, so Rails needs none of the Rack base's placeholder
+        # rule.
         def health_check?(env)
           controller = controller_name(env)
           return HEALTH_CHECK_CONTROLLERS.include?(controller) if controller
 
-          super
+          pattern = route_pattern(env) or return false
+          HEALTH_CHECK_PATHS.include?(pattern.split("/").last)
         end
 
         # The matched pattern, else the controller and action, which a route

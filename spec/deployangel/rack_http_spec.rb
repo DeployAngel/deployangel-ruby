@@ -41,6 +41,21 @@ RSpec.describe DeployAngel::Rack::Http do
     expect(recorded.map { |request| request[:route_key] }).to eq([ "GET /webhooks" ])
   end
 
+  it "records a page about something that ends in a health-check name, whatever its placeholders look like" do
+    app = ->(_env) { [ 200, {}, [ "ok" ] ] }
+    %w[/patients/:id/health /users/{id}/ping /files/*path/healthz].each { |path| call(app, "test.route" => path) }
+
+    expect(recorded.map { |request| request[:route_key] })
+      .to eq([ "GET /patients/:id/health", "GET /users/{id}/ping", "GET /files/*path/healthz" ])
+  end
+
+  it "records only errors on its own, since nothing names the routes" do
+    call(->(_env) { [ 200, {}, [ "ok" ] ] }, {}, described_class)
+    call(->(_env) { [ 404, {}, [] ] }, {}, described_class)
+
+    expect(recorded.map { |request| request.slice(:route_key, :in_totals) }).to eq([ { route_key: "GET unmatched", in_totals: false } ])
+  end
+
   it "leaves out routes the app ignores" do
     allow(DeployAngel).to receive(:configuration)
       .and_return(DeployAngel::Configuration.new({}).tap { |config| config.ignored_routes = [ "GET /metrics" ] })

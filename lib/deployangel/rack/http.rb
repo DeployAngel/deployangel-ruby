@@ -4,16 +4,16 @@ module DeployAngel
   # Rack adapters. Inside this namespace a bare Rack means DeployAngel::Rack,
   # so reach for the Rack gem itself as ::Rack.
   module Rack
-    # Rack middleware that records one request. It belongs at the top of the
-    # stack, so it sees the final status after the framework has rendered its
-    # own error pages.
-    #
-    #   use DeployAngel::Rack::Http
+    # The base for a framework's request middleware, not a middleware to use
+    # on its own: without an adapter naming routes, every successful request
+    # is unrouted and skipped, and only errors are recorded, as "unmatched".
+    # An adapter subclasses it, answers route_pattern (and rendered_exception
+    # if the framework renders exceptions itself), and is inserted at the top
+    # of the stack, so it sees the final status after the framework's own
+    # error pages. DeployAngel::Rails::Http is the Rails adapter.
     #
     # A request is only counted against a route pattern the framework
-    # matched, never the raw path, which keeps IDs out of route keys. Naming
-    # the route is the one thing a framework has to answer, so subclasses
-    # override route_pattern; DeployAngel::Rails::Http is the Rails adapter.
+    # matched, never the raw path, which keeps IDs out of route keys.
     class Http
       # Health checks served by a lambda or a mounted Rack app at a
       # conventional path. Load balancers and uptime monitors call them all
@@ -47,9 +47,9 @@ module DeployAngel
 
       private
         # The route the framework matched, as a pattern with placeholders
-        # ("/users/:id"), or nil when nothing matched. A framework that spells
-        # its placeholders differently still answers here; the pattern is
-        # only ever compared with itself.
+        # ("/users/:id"), or nil when nothing matched. Placeholders may be
+        # spelled :name, *name, or {name}; health_check? reads them, and
+        # otherwise the pattern is only ever compared with itself.
         def route_pattern(env)
           nil
         end
@@ -66,10 +66,19 @@ module DeployAngel
           "#{env["REQUEST_METHOD"]} #{pattern}"
         end
 
+        # A static route ending in a health-check name, such as "/healthz" or
+        # "/api/livez". A route with a placeholder, such as
+        # "/patients/:id/health", is a real page about something, so it's
+        # recorded.
         def health_check?(env)
           pattern = route_pattern(env) or return false
 
-          HEALTH_CHECK_PATHS.include?(pattern.split("/").last)
+          segments = pattern.split("/").reject(&:empty?)
+          HEALTH_CHECK_PATHS.include?(segments.last) && segments.none? { |segment| placeholder?(segment) }
+        end
+
+        def placeholder?(segment)
+          segment.start_with?(":", "*") || segment.include?("{")
         end
 
         def record(env, status, started, unhandled:, exception: nil)
