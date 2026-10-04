@@ -68,6 +68,18 @@ RSpec.describe DeployAngel::Metadata do
     expect(metadata(environment: "staging").schedules.map { |job| job["key"] }).to contain_exactly("here", "elsewhere")
   end
 
+  it "digests the folders an adapter names, for a framework laid out differently" do
+    write("app/models/user.rb", "class User; end")
+    write("slices/billing/actions/charge.rb", "class Charge; end")
+    write("config/app.rb", "App = 1")
+    adapter = Class.new(described_class) do
+      def digest_globs = %w[slices/**/* config/**/*]
+    end
+
+    files = adapter.new(config: config, root: @root, environment: "production").files
+    expect(files.keys).to eq([ "config/app.rb", "slices/billing/actions/charge.rb" ])
+  end
+
   it "digests files by path and hash, never their contents" do
     write("app/models/user.rb", "class User; end\n")
     write("Gemfile.lock", "GEM\n")

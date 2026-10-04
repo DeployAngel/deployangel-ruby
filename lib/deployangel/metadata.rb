@@ -15,6 +15,8 @@ module DeployAngel
   # framework owns is gathered here: the schedule files sidekiq-cron and
   # sidekiq-scheduler read, and the file digests.
   class Metadata
+    # A Rails-style layout, which most Ruby apps share. An adapter for a
+    # framework laid out differently overrides digest_globs.
     DIGEST_GLOBS = %w[app/**/* config/**/* lib/**/* db/migrate/**/* Gemfile.lock].freeze
     MAX_FILES = 20_000
     DIGEST_LENGTH = 16
@@ -50,6 +52,12 @@ module DeployAngel
     # The job classes the app defines, by name.
     def job_classes
       []
+    end
+
+    # The files digested to tell which routes a release changed, as globs
+    # relative to the app's root. Only paths and hashes are sent.
+    def digest_globs
+      DIGEST_GLOBS
     end
 
     # Declared recurring jobs. Each source is read on its own, so a file that
@@ -162,7 +170,7 @@ module DeployAngel
     def file_manifest
       @file_manifest ||= begin
         if @config.file_digests
-          paths = DIGEST_GLOBS.flat_map { |glob| Dir.glob(File.join(@root, glob)) }.select { |path| File.file?(path) }.sort
+          paths = digest_globs.flat_map { |glob| Dir.glob(File.join(@root, glob)) }.select { |path| File.file?(path) }.uniq.sort
           truncated = paths.size > MAX_FILES
           files = paths.first(MAX_FILES).to_h do |path|
             [ path.delete_prefix(@root).delete_prefix("/"), Digest::SHA256.file(path).hexdigest[0, DIGEST_LENGTH] ]
