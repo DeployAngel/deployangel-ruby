@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.7 (2026-10-04)
 
 - Health checks from OkComputer, health_check, and rails-healthcheck are left
   out like Rails' own, wherever they're mounted.
