@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- A 4xx response to a request no route matched, such as a bot probing
+  `/wp-admin` or `.env`, or middleware turning a request away before
+  routing, is still recorded under `GET unmatched` but no longer counts in
+  the app's request count, status counts, or latency. It made apps look
+  busier than their real pages, and fast 404s diluted their latency. An
+  unrouted 5xx still counts.
+
 ## 0.1.8 (2026-10-04)
 
 - Health checks served by a lambda or a mounted Rack app at a conventional

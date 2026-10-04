@@ -89,11 +89,13 @@ module DeployAngel
         (@job_classes[key] ||= JobStats.empty).record_discard
       end
 
-      def record(route_key, status, duration_ms, unhandled, max_routes)
-        @requests += 1
-        @status_counts[status.to_s] += 1 if status >= 400
-        @unhandled_exceptions += 1 if unhandled
-        @histogram.record(duration_ms)
+      def record(route_key, status, duration_ms, unhandled, max_routes, in_totals)
+        if in_totals
+          @requests += 1
+          @status_counts[status.to_s] += 1 if status >= 400
+          @unhandled_exceptions += 1 if unhandled
+          @histogram.record(duration_ms)
+        end
 
         key = @routes.key?(route_key) || @routes.size < max_routes - 1 ? route_key : OTHER_ROUTE
         route = (@routes[key] ||= RouteStats.empty)
@@ -112,11 +114,13 @@ module DeployAngel
       @mutex = Mutex.new
     end
 
-    def record(route_key:, status:, duration_ms:, unhandled: false)
+    # in_totals: false records the request under its route only, leaving it
+    # out of the app-wide counts and latency.
+    def record(route_key:, status:, duration_ms:, unhandled: false, in_totals: true)
       started_at = period_start(@clock.call)
       @mutex.synchronize do
         (@periods[started_at] ||= Period.new(started_at))
-          .record(route_key, status.to_i, duration_ms, unhandled, @max_routes)
+          .record(route_key, status.to_i, duration_ms, unhandled, @max_routes, in_totals)
       end
     end
 

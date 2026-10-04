@@ -45,7 +45,7 @@ module DeployAngel
           route = route_key(env)
           return if route && DeployAngel.configuration.ignored_route?(route)
           # Unrouted successes are static files and similar; unrouted
-          # errors (such as routing 404s) still count.
+          # errors (such as routing 404s) are still recorded.
           return if route.nil? && status.to_i < 400
 
           key = route || "#{env["REQUEST_METHOD"]} unmatched"
@@ -54,7 +54,13 @@ module DeployAngel
             route_key: key,
             status: status.to_i,
             duration_ms: (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000.0,
-            unhandled: unhandled
+            unhandled: unhandled,
+            # A 4xx no route matched is mostly bots probing paths like
+            # /wp-admin, or middleware turning requests away. It stays
+            # visible under "unmatched", but out of the app's totals, so it
+            # doesn't add to the evidence or dilute real pages' latency. An
+            # unrouted 5xx still counts: something broke.
+            in_totals: !route.nil? || status.to_i >= 500
           )
         rescue StandardError
           nil

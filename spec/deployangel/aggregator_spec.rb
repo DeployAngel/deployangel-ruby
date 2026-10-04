@@ -18,6 +18,17 @@ RSpec.describe DeployAngel::Aggregator do
     expect(period.routes["GET /products"].requests).to eq(2)
   end
 
+  it "records a request only under its route when it's left out of the totals" do
+    aggregator.record(route_key: "GET /products", status: 200, duration_ms: 84)
+    aggregator.record(route_key: "GET unmatched", status: 404, duration_ms: 2, in_totals: false)
+    clock.advance(60)
+
+    period = aggregator.drain.sole
+    expect([ period.requests, period.status_counts, period.histogram.count ]).to eq([ 1, {}, 1 ])
+    expect(period.routes["GET unmatched"].requests).to eq(1)
+    expect(period.routes["GET unmatched"].status_counts).to eq("404" => 1)
+  end
+
   it "does not drain the minute in progress unless asked" do
     aggregator.record(route_key: "GET /", status: 200, duration_ms: 1)
 

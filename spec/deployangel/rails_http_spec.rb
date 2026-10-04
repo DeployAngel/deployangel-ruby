@@ -104,6 +104,18 @@ RSpec.describe DeployAngel::Rails::Http do
     expect(recorded.map { |r| r[:route_key] }).to eq([ "GET unmatched" ])
   end
 
+  it "keeps unrouted 4xx such as bot probes out of the app's totals, but not unrouted 5xx or routed 4xx" do
+    call(->(_env) { [ 410, {}, [] ] })
+    call(->(_env) { [ 503, {}, [] ] })
+    call(->(_env) { [ 404, {}, [] ] }, "action_dispatch.route_uri_pattern" => "/users/:id(.:format)")
+
+    expect(recorded.map { |r| r.slice(:route_key, :status, :in_totals) }).to eq([
+      { route_key: "GET unmatched", status: 410, in_totals: false },
+      { route_key: "GET unmatched", status: 503, in_totals: true },
+      { route_key: "GET /users/:id", status: 404, in_totals: true }
+    ])
+  end
+
   it "passes straight through when not recording" do
     allow(DeployAngel).to receive(:recording?).and_return(false)
     call(->(_env) { [ 200, {}, [] ] }, "action_dispatch.route_uri_pattern" => "/x")

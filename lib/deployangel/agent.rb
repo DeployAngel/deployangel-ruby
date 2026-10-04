@@ -42,12 +42,12 @@ module DeployAngel
       @active
     end
 
-    def record_request(route_key:, status:, duration_ms:, unhandled: false)
+    def record_request(route_key:, status:, duration_ms:, unhandled: false, in_totals: true)
       return unless @active
 
       after_fork! if Process.pid != @pid
       start_reporter
-      @aggregator.record(route_key: route_key, status: status, duration_ms: duration_ms, unhandled: unhandled)
+      @aggregator.record(route_key: route_key, status: status, duration_ms: duration_ms, unhandled: unhandled, in_totals: in_totals)
     rescue StandardError => e
       warn_once(:record, "DeployAngel failed to record a request: #{e.class}: #{e.message}")
     end
