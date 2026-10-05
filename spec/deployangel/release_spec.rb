@@ -20,6 +20,15 @@ RSpec.describe DeployAngel::Release do
     expect(release.to_protocol).to eq("version" => "v184", "commit" => "81ac27d0a1b2c3", "source" => "heroku_dyno_metadata")
   end
 
+  it "prefers Heroku's build commit to the deprecated slug commit" do
+    release = described_class.resolve(config: config,
+      env: { "HEROKU_RELEASE_VERSION" => "v185", "HEROKU_BUILD_COMMIT" => "92bd38e1", "HEROKU_SLUG_COMMIT" => "81ac27d0" })
+    expect(release.to_protocol).to eq("version" => "v185", "commit" => "92bd38e1", "source" => "heroku_dyno_metadata")
+
+    release = described_class.resolve(config: config, env: { "HEROKU_BUILD_COMMIT" => "92bd38e1" })
+    expect(release.to_protocol).to eq("version" => nil, "commit" => "92bd38e1", "source" => "heroku_dyno_metadata")
+  end
+
   describe "hosting platforms" do
     it "reports Kamal's default version, a plain commit, as the commit" do
       release = described_class.resolve(config: config, env: { "KAMAL_VERSION" => "81AC27D0A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6" })

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Heroku: the commit comes from `HEROKU_BUILD_COMMIT`
+  (`heroku labs:enable runtime-dyno-build-metadata`) when it's set, and from
+  `HEROKU_SLUG_COMMIT`, which Heroku has deprecated, otherwise.
+
 ## 0.1.10 (2026-10-04)
 
 - `config.exception_messages = false` (or `DEPLOYANGEL_EXCEPTION_MESSAGES=false`)

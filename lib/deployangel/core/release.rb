@@ -19,8 +19,8 @@ module DeployAngel
     def self.resolve(config:, env: ENV, root: nil, http: method(:fetch_metadata))
       if present?(config.release_version) || present?(config.revision)
         build(config.release_version, config.revision, "config")
-      elsif present?(env["HEROKU_RELEASE_VERSION"]) || present?(env["HEROKU_SLUG_COMMIT"])
-        build(env["HEROKU_RELEASE_VERSION"], env["HEROKU_SLUG_COMMIT"], "heroku_dyno_metadata")
+      elsif present?(env["HEROKU_RELEASE_VERSION"]) || present?(heroku_commit(env))
+        build(env["HEROKU_RELEASE_VERSION"], heroku_commit(env), "heroku_dyno_metadata")
       elsif present?(env["KAMAL_VERSION"])
         kamal(env["KAMAL_VERSION"])
       elsif present?(env["RENDER_GIT_COMMIT"])
@@ -112,6 +112,12 @@ module DeployAngel
       new(present?(version) ? version.to_s.strip[0, 100] : nil,
         commit.match?(COMMIT_FORMAT) ? commit : nil,
         source)
+    end
+
+    # HEROKU_BUILD_COMMIT (runtime-dyno-build-metadata) replaces the
+    # deprecated HEROKU_SLUG_COMMIT (runtime-dyno-metadata).
+    def self.heroku_commit(env)
+      present?(env["HEROKU_BUILD_COMMIT"]) ? env["HEROKU_BUILD_COMMIT"] : env["HEROKU_SLUG_COMMIT"]
     end
 
     def self.present?(value)

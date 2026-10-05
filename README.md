@@ -24,6 +24,8 @@ The agent must know which release it is running. It finds it in this order:
 
 1. `DEPLOYANGEL_REVISION` (the commit SHA) and `DEPLOYANGEL_RELEASE_VERSION`, if you set them
 2. Heroku dyno metadata. Enable it with `heroku labs:enable runtime-dyno-metadata`
+   and `heroku labs:enable runtime-dyno-build-metadata` (for `HEROKU_BUILD_COMMIT`,
+   which replaces the deprecated `HEROKU_SLUG_COMMIT`); both take effect on the next deploy
 3. Kamal: `KAMAL_VERSION`, which Kamal sets in every container
 4. Render: `RENDER_GIT_COMMIT`
 5. Fly.io: the deploy's image tag, from `FLY_IMAGE_REF`. Fly.io sets no commit, so
