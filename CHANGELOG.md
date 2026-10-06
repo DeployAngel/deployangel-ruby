@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.12 (2026-10-06)
 
 - `deployangel plan` and the MCP tool `get_exercise_plan` say what stands
   between a release and clearance, and what to exercise against production
