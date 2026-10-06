@@ -13,6 +13,10 @@ module DeployAngel
         "checkpoint_rate" => "Checkpoint"
       }.freeze
       DURATIONS = %w[p95_latency job_duration queue_latency].freeze
+      # Exercise plan statuses with something worth running now.
+      EXERCISABLE = %w[exercisable waiting_for_activity].freeze
+      REASONS = { "normally_active" => "normally active", "changed_in_release" => "changed in this release",
+                  "rarely_used" => "rarely used", "critical_flow" => "critical flow" }.freeze
       COUNTS = %w[new_fingerprint checkpoint_rate].freeze
 
       module_function
@@ -103,8 +107,60 @@ module DeployAngel
             "#{flow["name"]}: #{flow["status"].tr("_", " ")}#{" (changed in this release)" if flow["changed_in_release"]}"
           end ],
           [ "Changed but not yet exercised", changed.map { |item| item["key"] } ],
+          [ "To clear sooner, exercise (deployangel plan for details)", exercisable_items(document).first(5) ],
           [ "Late regressions", Array(document["late_regressions"]).map { |late| late["summary"] } ]
         ].reject { |_, items| items.empty? }
+      end
+
+      # The release's exercise plan, for `deployangel plan`.
+      def exercise_plan(document)
+        plan = document["exercise_plan"] || {}
+        lines = [ "#{release_name(document)}: #{plan["summary"] || "No exercise plan in this response; update the server."}" ]
+        shortfall = shortfall_lines(plan["shortfall"] || {})
+        if shortfall.any?
+          lines << "Short of:"
+          shortfall.each { |line| lines << "  #{line}" }
+        end
+        items = Array(plan["items"])
+        if items.any?
+          lines << (EXERCISABLE.include?(plan["status"]) ? "Exercise against production:" : "Optional:")
+          items.each { |item| lines << "  #{item_line(item)}" }
+          lines << "Use a test account, or ask first, for routes marked [changes data]." if items.any? { |item| item["mutating"] }
+        end
+        lines << "Then report it: #{plan["report_with"]}" if plan["report_with"]
+        lines.join("\n")
+      end
+
+      def exercisable_items(document)
+        plan = document["exercise_plan"] || {}
+        EXERCISABLE.include?(plan["status"]) ? Array(plan["items"]).map { |item| item_line(item) } : []
+      end
+
+      def shortfall_lines(shortfall)
+        lines = []
+        if (requests = shortfall["requests"])
+          lines << "requests: #{requests["have"]} of #{requests["need"]}#{" (low-traffic rule)" if shortfall["rule"] == "low_volume"}"
+        end
+        shortfall.each do |key, value|
+          next unless key.start_with?("routes_run_")
+
+          lines << "routes run #{key[/\d+/]}+ times: #{value["have"]} of the #{value["need"]} needed (#{value["of"]} normally active)"
+        end
+        lines << "coverage: #{(shortfall.dig("coverage", "have").to_f * 100).round}% of #{(shortfall.dig("coverage", "need").to_f * 100).round}%" if shortfall["coverage"]
+        if (jobs = shortfall["jobs"])
+          lines << (jobs["classes_not_run"] ? "jobs not run yet: #{Array(jobs["classes_not_run"]).join(", ")}" :
+            "job attempts: #{jobs.dig("attempts", "have")} of #{jobs.dig("attempts", "need")}")
+        end
+        lines << "elevated, review before exercising more: #{Array(shortfall["elevated"]).join(", ")}" if shortfall["elevated"]
+        lines << "critical flows not run: #{Array(shortfall["critical_flows"]).join(", ")}" if shortfall["critical_flows"]
+        lines
+      end
+
+      def item_line(item)
+        runs = item["runs_needed"].to_i > 1 ? "run #{item["runs"]} of #{item["runs_needed"]}" : "not run yet"
+        runs = "runs when the app starts it" if item["triggered_by"] == "app_behavior"
+        [ item["key"], "(#{REASONS.fetch(item["reason"], item["reason"])}, #{runs})",
+          ("[changes data]" if item["mutating"]), ("checked by #{Array(item["checked_by"]).join(", ")}" if item["checked_by"]) ].compact.join(" ")
       end
 
       def release_name(document)

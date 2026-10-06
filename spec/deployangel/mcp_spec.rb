@@ -30,6 +30,19 @@ RSpec.describe DeployAngel::MCP::Server do
     expect(names.call).to include("register_deployment", "wait_for_verification", "get_exception")
   end
 
+  it "returns a release's exercise plan, and explains how to act on it" do
+    client = FakeClient.new(documents: [ verdict_document(state: "observing").merge("exercise_plan" => exercise_plan) ])
+    server = described_class.new(client: client, output: StringIO.new, error_output: StringIO.new, git_head: -> { "81ac27d0000" })
+    tools = server.handle({ "jsonrpc" => "2.0", "id" => 1, "method" => "tools/list" }).dig("result", "tools")
+    expect(tools.find { |tool| tool["name"] == "get_exercise_plan" }["description"]).to include("test account or ask first")
+
+    result = server.handle({ "jsonrpc" => "2.0", "id" => 2, "method" => "tools/call",
+      "params" => { "name" => "get_exercise_plan", "arguments" => {} } })["result"]
+    expect(result["structuredContent"].dig("exercise_plan", "status")).to eq("exercisable")
+    expect(result["structuredContent"].dig("deployment", "version")).to eq("v184")
+    expect(request("initialize")["result"]["instructions"]).to include("get_exercise_plan", "warm_up")
+  end
+
   it "waits for a verdict and returns structured content with the exit code's meaning" do
     result = request("tools/call", { "name" => "wait_for_verification", "arguments" => { "until" => "verdict" } })["result"]
 

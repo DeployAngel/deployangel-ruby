@@ -40,6 +40,19 @@ class FakeClient
   def late_regressions(**) = []
 end
 
+# An exercise plan as the server returns it for a quiet app's release.
+def exercise_plan(status: "exercisable")
+  { "status" => status, "summary" => "Not cleared yet. Exercising these items against production would let it clear sooner.",
+    "shortfall" => { "rule" => "low_volume", "requests" => { "have" => 12, "need" => 30 },
+                     "routes_run_3_times" => { "have" => 1, "need" => 3, "of" => 3 } },
+    "items" => [
+      { "kind" => "route", "key" => "GET /orders/:id", "reason" => "normally_active", "runs" => 1, "runs_needed" => 3, "mutating" => false },
+      { "kind" => "route", "key" => "POST /password_resets", "reason" => "changed_in_release", "runs" => 0, "mutating" => true },
+      { "kind" => "job_class", "key" => "InvoiceMailer", "reason" => "normally_active", "runs" => 0, "triggered_by" => "app_behavior" }
+    ],
+    "report_with" => %(deployangel check --name="exercise plan" --status=pass --covers="GET /orders/:id,POST /password_resets,InvoiceMailer") }
+end
+
 def verdict_document(state:, verdict: nil, initial_check: nil, poll: 60)
   { "schema_version" => 1, "deployment" => { "id" => 42, "version" => "v184" },
     "verification" => { "state" => state, "verdict" => verdict, "initial_check" => initial_check, "confidence" => "high", "coverage" => 1.0 },

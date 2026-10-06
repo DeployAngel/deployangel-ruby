@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `deployangel plan` and the MCP tool `get_exercise_plan` say what stands
+  between a release and clearance, and what to exercise against production
+  so it clears sooner. Routes that change data are marked. `deployangel
+  verify` and the GitHub Actions job summary list the first items when a
+  release isn't cleared yet. Needs a DeployAngel server that returns
+  exercise plans; older ones get a note instead.
+
 ## 0.1.11 (2026-10-05)
 
 - Heroku: the commit comes from `HEROKU_BUILD_COMMIT`

@@ -364,6 +364,7 @@ export DEPLOYANGEL_API_TOKEN=da_live_...
 bundle exec deployangel verify --wait                  # current git HEAD, until a verdict
 bundle exec deployangel verify --wait --until=initial  # return at the 15-minute initial check
 bundle exec deployangel status                         # latest deployment
+bundle exec deployangel plan                           # what to exercise so a release clears sooner
 bundle exec deployangel release --commit=$SHA          # register a deploy (manual or CI)
 bundle exec deployangel check --name="smoke: signup" --status=pass --covers=registration
 bundle exec deployangel exception <fingerprint>
@@ -390,9 +391,23 @@ claude mcp add deployangel -- bundle exec deployangel mcp
 ```
 
 Tools: `get_verification`, `wait_for_verification` (up to 5 minutes per call),
-`list_deployments`, `get_exception`, `list_late_regressions`, and
-`register_deployment` when the token allows it. The tools are read-only with
-respect to production.
+`get_exercise_plan`, `list_deployments`, `get_exception`,
+`list_late_regressions`, and `register_deployment` when the token allows it.
+The tools are read-only with respect to production.
+
+### Clearing quiet releases sooner
+
+A quiet app can take hours to clear a release. `deployangel plan` (or the
+`get_exercise_plan` MCP tool) says what stands between a release and
+clearance, in the numbers of the rule it's judged by, and what to exercise
+against production so it clears sooner: normally active routes short of
+their runs, routes this release changed that haven't run, and critical
+flows. Requests to them count like any traffic. Routes that change data
+are marked; use a test account for them, or ask first. Report what you
+ran with the `deployangel check` command the plan gives you. A passing
+check labels what it covered; only the requests themselves count as
+evidence. A release deployed during an app's first 24 hours can't clear,
+so its plan lists nothing.
 
 ### Suggested instructions for your coding agent
 
@@ -416,6 +431,13 @@ After deploying, run `bundle exec deployangel verify --wait --until initial`
   cause, and propose a fix. Do not roll back or change production without
   explicit approval.
 - Exit 3: still verifying; run the command again.
+- Not cleared yet and you can reach production: run
+  `bundle exec deployangel plan --format=json` (or `get_exercise_plan`). If
+  its status is "exercisable" or "waiting_for_activity", exercise the listed
+  items against production: read-only routes freely, routes marked mutating
+  only with a test account or after asking. Then run its `report_with`
+  command and wait again. If the status is "warm_up", don't exercise
+  anything: the release can't clear until DeployAngel has a day of history.
 ```
 
 ## Development

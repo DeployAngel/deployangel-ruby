@@ -29,6 +29,53 @@ RSpec.describe DeployAngel::CLI do
     expect(client.calls.first).to eq([ :deployments, { commit: "81ac27d0000", version: nil, limit: 1 } ])
   end
 
+  describe "plan" do
+    let(:document) { verdict_document(state: "observing").merge("exercise_plan" => exercise_plan) }
+
+    it "says what's short and what to exercise, flagging routes that change data" do
+      expect(run("plan", "--format=text", client: FakeClient.new(documents: [ document ]))).to eq(0)
+
+      text = stdout.string
+      expect(text).to include("v184: Not cleared yet.", "requests: 12 of 30 (low-traffic rule)",
+        "routes run 3+ times: 1 of the 3 needed (3 normally active)",
+        "GET /orders/:id (normally active, run 1 of 3)", "POST /password_resets (changed in this release, not run yet) [changes data]",
+        "InvoiceMailer (normally active, runs when the app starts it)", "Use a test account, or ask first",
+        %(Then report it: deployangel check --name="exercise plan"))
+    end
+
+    it "prints the deployment and plan as JSON for agents" do
+      run("plan", "--format=json", client: FakeClient.new(documents: [ document ]))
+
+      json = JSON.parse(stdout.string)
+      expect(json.keys).to eq(%w[deployment exercise_plan])
+      expect(json.dig("exercise_plan", "status")).to eq("exercisable")
+    end
+
+    it "says plainly when the server doesn't return plans yet, or the deployment isn't found" do
+      run("plan", "--format=text", client: FakeClient.new(documents: [ verdict_document(state: "observing") ]))
+      expect(stdout.string).to include("No exercise plan in this response; update the server.")
+
+      expect(run("plan", client: FakeClient.new(deployments_list: []))).to eq(4)
+    end
+
+    it "adds the first items to verify's output and the GitHub job summary" do
+      Dir.mktmpdir do |dir|
+        summary = File.join(dir, "summary.md")
+        run("verify", "--format=text", client: FakeClient.new(documents: [ document ]), env: { "GITHUB_STEP_SUMMARY" => summary })
+
+        expect(stdout.string).to include("To clear sooner, exercise (deployangel plan for details):", "GET /orders/:id (normally active, run 1 of 3)")
+        expect(File.read(summary)).to include("**To clear sooner, exercise (deployangel plan for details)**", "- POST /password_resets")
+      end
+    end
+
+    it "leaves verify's output alone when there's nothing to exercise" do
+      warm = verdict_document(state: "observing").merge("exercise_plan" => exercise_plan(status: "warm_up"))
+      run("verify", "--format=text", client: FakeClient.new(documents: [ warm ]))
+
+      expect(stdout.string).not_to include("To clear sooner")
+    end
+  end
+
   it "exits 3 without waiting while the verification is in progress" do
     client = FakeClient.new(documents: [ verdict_document(state: "observing") ])
     expect(run("verify", client: client)).to eq(3)

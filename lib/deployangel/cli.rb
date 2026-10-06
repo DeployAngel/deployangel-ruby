@@ -28,13 +28,15 @@ module DeployAngel
                                                  [--wait] [--until=initial|verdict|closed] [--timeout=30m]
                                                  [--format=text|json] [--all-findings]
         status     Latest deployment and its verification
+        plan       What to exercise so a release  [--commit=SHA | --version=V | --deployment=ID]
+                   clears sooner                 [--format=text|json]
         exception  Details for a fingerprint     deployangel exception FINGERPRINT
         check      Report a smoke test result    --name=NAME --status=pass|fail [--covers=a,b]
                                                  [--commit=SHA | --deployment=ID] [--details-url=URL]
         install    Add a deploy hook             deployangel install kamal
         mcp        Run the MCP server over stdio (for coding agents)
 
-      With no target, verify and check use the current git HEAD commit.
+      With no target, verify, plan, and check use the current git HEAD commit.
       In GitHub Actions, GitLab CI, CircleCI, and Buildkite, release fills in the
       commit, a build label (e.g. run-123), and a link to the run automatically.
       In a Kamal hook, it registers Kamal's release (KAMAL_VERSION).
@@ -75,6 +77,7 @@ module DeployAngel
       when "release" then release
       when "verify" then verify
       when "status" then verify(status: true)
+      when "plan" then plan
       when "exception" then exception
       when "check" then check
       when "install" then install
@@ -148,6 +151,30 @@ module DeployAngel
         step_summary(Formatter.markdown(document))
         @stderr.puts("deployangel: timed out; verification is still in progress") if outcome.timed_out
         outcome.exit_code
+      end
+
+      # The release's exercise plan: what stands between it and clearance,
+      # and what to exercise against production so it clears sooner.
+      def plan
+        options = parse(format: nil) do |o, opts|
+          o.on("--commit=SHA") { |v| opts[:commit] = v }
+          o.on("--version=VERSION") { |v| opts[:version] = v }
+          o.on("--deployment=ID") { |v| opts[:deployment_id] = v }
+          o.on("--format=FORMAT", %w[text json]) { |v| opts[:format] = v }
+        end
+        target = target_from(options)
+        return usage_error("no target: pass --commit, --version, or --deployment, or run inside a git repository") unless target
+
+        outcome = VerificationWaiter.new(client: client, sleeper: @sleeper, clock: @clock).wait(target, wait: false)
+        if outcome.not_found
+          @stderr.puts("deployangel: no deployment found for #{target.values.first}")
+          return outcome.exit_code
+        end
+
+        document = outcome.document
+        json = { "deployment" => document["deployment"], "exercise_plan" => document["exercise_plan"] }
+        output(json, options[:format]) { Formatter.exercise_plan(document) }
+        0
       end
 
       def exception
