@@ -387,8 +387,19 @@ choose with `--format=text|json`. Exit codes:
 ### MCP server
 
 ```bash
-claude mcp add deployangel -- bundle exec deployangel mcp
+claude mcp add deployangel -- bundle exec deployangel mcp    # Claude Code
 ```
+
+For Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.deployangel]
+command = "bundle"
+args = ["exec", "deployangel", "mcp"]
+```
+
+Any other MCP client (Cursor, VS Code, Zed, ...) runs the same command. The
+server needs `DEPLOYANGEL_API_TOKEN` in the environment it starts in.
 
 Tools: `get_verification`, `wait_for_verification` (up to 5 minutes per call),
 `get_exercise_plan`, `list_deployments`, `get_exception`,
