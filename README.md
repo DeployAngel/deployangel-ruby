@@ -413,7 +413,8 @@ A quiet app can take hours to clear a release. `deployangel plan` (or the
 clearance, in the numbers of the rule it's judged by, and what to exercise
 against production so it clears sooner: normally active routes short of
 their runs, routes this release changed that haven't run, and critical
-flows. Requests to them count like any traffic. Routes that change data
+flows. It separates what clearance waits on from changed and rarely used
+paths that are only worth running. Requests to them count like any traffic. Routes that change data
 are marked; use a test account for them, or ask first. Report what you
 ran with the `deployangel check` command the plan gives you. A passing
 check labels what it covered; only the requests themselves count as

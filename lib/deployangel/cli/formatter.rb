@@ -122,18 +122,37 @@ module DeployAngel
           shortfall.each { |line| lines << "  #{line}" }
         end
         items = Array(plan["items"])
-        if items.any?
-          lines << (EXERCISABLE.include?(plan["status"]) ? "Exercise against production:" : "Optional:")
-          items.each { |item| lines << "  #{item_line(item)}" }
-          lines << "Use a test account, or ask first, for routes marked [changes data]." if items.any? { |item| item["mutating"] }
+        if EXERCISABLE.include?(plan["status"])
+          needed, extra = items.partition { |item| needed?(item) }
+          item_group(lines, "Needed to clear, exercise against production:", needed)
+          item_group(lines, "Also worth running, not needed to clear (changed or rarely used, watched on first use):", extra)
+        else
+          item_group(lines, "Optional:", items)
         end
+        lines << "Use a test account, or ask first, for routes marked [changes data]." if items.any? { |item| item["mutating"] }
         lines << "Then report it: #{plan["report_with"]}" if plan["report_with"]
         lines.join("\n")
       end
 
+      # Only what clearance waits on: the rest is in `deployangel plan`.
       def exercisable_items(document)
         plan = document["exercise_plan"] || {}
-        EXERCISABLE.include?(plan["status"]) ? Array(plan["items"]).map { |item| item_line(item) } : []
+        return [] unless EXERCISABLE.include?(plan["status"])
+
+        Array(plan["items"]).select { |item| needed?(item) }.map { |item| item_line(item) }
+      end
+
+      # Whether clearance waits on the item. Servers older than the needed
+      # flag listed normally active items first, so count those.
+      def needed?(item)
+        item.key?("needed") ? item["needed"] : item["reason"] == "normally_active"
+      end
+
+      def item_group(lines, heading, items)
+        return if items.empty?
+
+        lines << heading
+        items.each { |item| lines << "  #{item_line(item)}" }
       end
 
       def shortfall_lines(shortfall)

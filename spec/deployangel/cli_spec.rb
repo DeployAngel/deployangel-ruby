@@ -41,6 +41,20 @@ RSpec.describe DeployAngel::CLI do
         "GET /orders/:id (normally active, run 1 of 3)", "POST /password_resets (changed in this release, not run yet) [changes data]",
         "InvoiceMailer (normally active, runs when the app starts it)", "Use a test account, or ask first",
         %(Then report it: deployangel check --name="exercise plan"))
+      # What clearance waits on comes first; the rest is only worth running.
+      needed = text.index("Needed to clear")
+      also = text.index("Also worth running, not needed to clear")
+      expect(needed).to be < text.index("InvoiceMailer")
+      expect(text.index("InvoiceMailer")).to be < also
+      expect(also).to be < text.index("POST /password_resets")
+    end
+
+    it "counts normally active items as needed from a server that doesn't say" do
+      plan = exercise_plan.merge("items" => exercise_plan["items"].map { |item| item.except("needed") })
+      run("plan", "--format=text", client: FakeClient.new(documents: [ verdict_document(state: "observing").merge("exercise_plan" => plan) ]))
+
+      text = stdout.string
+      expect(text.index("GET /orders/:id")).to be < text.index("Also worth running")
     end
 
     it "prints the deployment and plan as JSON for agents" do
@@ -64,7 +78,9 @@ RSpec.describe DeployAngel::CLI do
         run("verify", "--format=text", client: FakeClient.new(documents: [ document ]), env: { "GITHUB_STEP_SUMMARY" => summary })
 
         expect(stdout.string).to include("To clear sooner, exercise (deployangel plan for details):", "GET /orders/:id (normally active, run 1 of 3)")
-        expect(File.read(summary)).to include("**To clear sooner, exercise (deployangel plan for details)**", "- POST /password_resets")
+        expect(stdout.string).not_to include("POST /password_resets")
+        expect(File.read(summary)).to include("**To clear sooner, exercise (deployangel plan for details)**", "- InvoiceMailer")
+        expect(File.read(summary)).not_to include("POST /password_resets")
       end
     end
 

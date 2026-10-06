@@ -46,9 +46,11 @@ def exercise_plan(status: "exercisable")
     "shortfall" => { "rule" => "low_volume", "requests" => { "have" => 12, "need" => 30 },
                      "routes_run_3_times" => { "have" => 1, "need" => 3, "of" => 3 } },
     "items" => [
-      { "kind" => "route", "key" => "GET /orders/:id", "reason" => "normally_active", "runs" => 1, "runs_needed" => 3, "mutating" => false },
-      { "kind" => "route", "key" => "POST /password_resets", "reason" => "changed_in_release", "runs" => 0, "mutating" => true },
-      { "kind" => "job_class", "key" => "InvoiceMailer", "reason" => "normally_active", "runs" => 0, "triggered_by" => "app_behavior" }
+      { "kind" => "route", "key" => "GET /orders/:id", "reason" => "normally_active", "runs" => 1, "runs_needed" => 3, "mutating" => false,
+        "needed" => true },
+      { "kind" => "route", "key" => "POST /password_resets", "reason" => "changed_in_release", "runs" => 0, "mutating" => true, "needed" => false },
+      { "kind" => "job_class", "key" => "InvoiceMailer", "reason" => "normally_active", "runs" => 0, "triggered_by" => "app_behavior",
+        "needed" => true }
     ],
     "report_with" => %(deployangel check --name="exercise plan" --status=pass --covers="GET /orders/:id,POST /password_resets,InvoiceMailer") }
 end
