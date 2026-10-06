@@ -31,11 +31,16 @@ module DeployAngel
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         Redaction.request_host = env["HTTP_HOST"]
+        # Checkpoints recorded from here until the app returns count as
+        # recorded in a request.
+        previous_context = ExecutionContext.enter(ExecutionContext::HTTP)
         begin
           status, headers, body = @app.call(env)
         rescue Exception => e # rubocop:disable Lint/RescueException -- recorded, then re-raised untouched
           record(env, 500, started, unhandled: true, exception: e)
           raise
+        ensure
+          ExecutionContext.restore(previous_context)
         end
         # A framework that renders an exception itself swallows it before it
         # reaches this middleware, and renders some as 4xx; only those that

@@ -34,7 +34,11 @@ module DeployAngel
         "exceptions_truncated" => period.exceptions_truncated,
         "jobs" => job_stats(period.jobs),
         "job_classes" => period.job_classes.map { |key, stats| { "key" => key }.merge(job_stats(stats)) },
-        "checkpoints" => period.checkpoints.map { |key, count| { "key" => key, "count" => count } }
+        # http and job are always sent, 0 when none, so the cloud can tell
+        # this agent from one that doesn't say where checkpoints happened.
+        "checkpoints" => period.checkpoints.map do |key, stats|
+          { "key" => key, "count" => stats.count, "http" => stats.http, "job" => stats.job }
+        end
       }
     end
 

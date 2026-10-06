@@ -11,6 +11,34 @@ module DeployAngel
     # perform finishes.
     module ActiveJob
       STATE = :@__deployangel_job_state
+      PREVIOUS_CONTEXT = :@__deployangel_previous_context
+
+      # Marks the fiber as running a job for as long as perform.active_job
+      # lasts, so checkpoints recorded by the job say so. ActiveSupport calls
+      # finish from an ensure, so the previous context (an HTTP request, for
+      # a job performed inline) comes back even when the job raises. It is
+      # kept on the job, so only a perform that started here restores.
+      module ContextListener
+        module_function
+
+        def start(_name, _id, payload)
+          job = payload[:job]
+          return unless job && DeployAngel.recording?
+
+          job.instance_variable_set(PREVIOUS_CONTEXT, ExecutionContext.enter(ExecutionContext::JOB))
+        rescue StandardError
+          nil
+        end
+
+        def finish(_name, _id, payload)
+          job = payload[:job]
+          return unless job&.instance_variable_defined?(PREVIOUS_CONTEXT)
+
+          ExecutionContext.restore(job.remove_instance_variable(PREVIOUS_CONTEXT))
+        rescue StandardError
+          nil
+        end
+      end
 
       module_function
 
@@ -23,6 +51,7 @@ module DeployAngel
         subscribe("enqueue_retry.active_job") { |payload| state(payload).merge!(failed: true, error: payload[:error]) }
         subscribe("discard.active_job") { |payload| state(payload).merge!(failed: true, discarded: true, error: payload[:error]) }
         subscribe("retry_stopped.active_job") { |payload| state(payload).merge!(failed: true, discarded: true, error: payload[:error]) }
+        ::ActiveSupport::Notifications.subscribe("perform.active_job", ContextListener)
         ::ActiveSupport::Notifications.subscribe("perform.active_job") { |event| record(event) }
       end
 

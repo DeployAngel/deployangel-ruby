@@ -71,12 +71,14 @@ module DeployAngel
       warn_once(:record_discard, "DeployAngel failed to record a discarded job: #{e.class}: #{e.message}")
     end
 
-    def record_checkpoint(name, count: 1)
+    # context defaults to the unit of work this fiber is running: an HTTP
+    # request, a job, or neither.
+    def record_checkpoint(name, count: 1, context: ExecutionContext.current)
       return unless @active
 
       after_fork! if Process.pid != @pid
       start_reporter
-      @aggregator.record_checkpoint(name: name, count: count)
+      @aggregator.record_checkpoint(name: name, count: count, context: context)
     rescue StandardError => e
       warn_once(:record_checkpoint, "DeployAngel failed to record a checkpoint: #{e.class}: #{e.message}")
     end

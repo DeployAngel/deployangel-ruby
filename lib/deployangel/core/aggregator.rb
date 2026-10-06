@@ -37,6 +37,20 @@ module DeployAngel
       end
     end
 
+    # count: every recording; http and job: those recorded while handling an
+    # HTTP request or running a job (see ExecutionContext). The rest were
+    # recorded outside either.
+    CheckpointStats = Struct.new(:count, :http, :job) do
+      def record(count, context)
+        self.count += count
+        if context == ExecutionContext::HTTP
+          self.http += count
+        elsif context == ExecutionContext::JOB
+          self.job += count
+        end
+      end
+    end
+
     class Period
       attr_reader :started_at, :requests, :status_counts, :unhandled_exceptions, :histogram, :routes,
         :jobs, :job_classes, :exceptions, :exceptions_truncated, :checkpoints
@@ -52,13 +66,13 @@ module DeployAngel
         @job_classes = {}
         @exceptions = {}
         @exceptions_truncated = 0
-        @checkpoints = Hash.new(0)
+        @checkpoints = {}
       end
 
       # Up to 100 names per period; the rest are counted together.
-      def record_checkpoint(name, count)
+      def record_checkpoint(name, count, context)
         key = @checkpoints.key?(name) || @checkpoints.size < MAX_CHECKPOINTS - 1 ? name : OTHER_ROUTE
-        @checkpoints[key] += count
+        (@checkpoints[key] ||= CheckpointStats.new(0, 0, 0)).record(count, context)
       end
 
       # Up to 20 fingerprints per period; the rest are only counted.
@@ -141,9 +155,11 @@ module DeployAngel
       @mutex.synchronize { (@periods[started_at] ||= Period.new(started_at)).record_discard(job_class.to_s, @max_routes) }
     end
 
-    def record_checkpoint(name:, count: 1)
+    # context: where it was recorded, ExecutionContext::HTTP, ExecutionContext::JOB,
+    # or nil for neither.
+    def record_checkpoint(name:, count: 1, context: nil)
       started_at = period_start(@clock.call)
-      @mutex.synchronize { (@periods[started_at] ||= Period.new(started_at)).record_checkpoint(name, count) }
+      @mutex.synchronize { (@periods[started_at] ||= Period.new(started_at)).record_checkpoint(name, count, context) }
     end
 
     # A representative backtrace is kept only the first time this process

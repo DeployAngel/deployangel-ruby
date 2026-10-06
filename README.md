@@ -207,6 +207,10 @@ and job still succeeds. Only drops are flagged, and a checkpoint without enough
 traffic never blocks a release from being cleared. Checkpoints can also be part
 of a critical flow (`checkpoint:order.created`).
 
+The agent also records whether each checkpoint was counted during an HTTP
+request or a background job, so DeployAngel compares it against the right
+traffic: a checkpoint counted in jobs is judged against jobs, not requests.
+
 It's safe to call anywhere: it never raises, never touches the network, and is
 ignored outside reporting environments. Names use letters, numbers, and
 `. _ : -` (up to 100 characters); keep them to a fixed set rather than

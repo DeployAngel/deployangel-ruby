@@ -16,12 +16,15 @@ module DeployAngel
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         latency = DeployAngel::Sidekiq.queue_latency_ms(job)
+        previous_context = ExecutionContext.enter(ExecutionContext::JOB)
         begin
           yield
         rescue Exception => e # rubocop:disable Lint/RescueException -- recorded, then re-raised untouched
           DeployAngel.record_exception(e, source: "job_class:#{job["class"]}")
           record(job, started, latency, failed: true)
           raise
+        ensure
+          ExecutionContext.restore(previous_context)
         end
         record(job, started, latency, failed: false)
       end

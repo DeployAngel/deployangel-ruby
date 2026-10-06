@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Checkpoints report whether they were recorded in an HTTP request or a job
+  (`http` and `job` counts on each checkpoint), so DeployAngel compares a
+  checkpoint recorded in jobs against job traffic rather than requests. A job
+  performed inline during a request counts as a job. Needs a DeployAngel
+  server that reads the new fields; older servers ignore them.
+
 ## 0.1.14 (2026-10-06)
 
 - `deployangel plan` separates what clearance waits on ("Needed to clear")
