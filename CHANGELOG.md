@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.11 (2026-10-05)
 
 - Heroku: the commit comes from `HEROKU_BUILD_COMMIT`
   (`heroku labs:enable runtime-dyno-build-metadata`) when it's set, and from
