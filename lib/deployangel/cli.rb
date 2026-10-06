@@ -139,11 +139,13 @@ module DeployAngel
         outcome = waiter.wait(target, until_mode: options[:until_mode], timeout: options[:timeout], wait: options[:wait])
         if outcome.not_found
           @stderr.puts("deployangel: no deployment found for #{target.values.first}")
+          step_summary("### DeployAngel: no deployment found for #{target.values.first}\n")
           return outcome.exit_code
         end
 
         document = options[:all_findings] ? client.verification(outcome.document.dig("deployment", "id"), all_findings: true) : outcome.document
         output(document, options[:format]) { Formatter.verification(document) }
+        step_summary(Formatter.markdown(document))
         @stderr.puts("deployangel: timed out; verification is still in progress") if outcome.timed_out
         outcome.exit_code
       end
@@ -226,6 +228,16 @@ module DeployAngel
       def output(document, format = nil)
         format ||= @stdout.tty? ? "text" : "json"
         @stdout.puts(format == "json" ? JSON.pretty_generate(document) : yield)
+      end
+
+      # In GitHub Actions, the verdict also goes on the run's summary page.
+      def step_summary(markdown)
+        path = @env["GITHUB_STEP_SUMMARY"].to_s
+        return if path.empty?
+
+        File.open(path, "a") { |file| file.puts(markdown) }
+      rescue SystemCallError => e
+        @stderr.puts("deployangel: couldn't write the job summary (#{e.message})")
       end
 
       def parse_duration(value)

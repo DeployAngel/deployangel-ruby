@@ -245,6 +245,9 @@ to the run. Explicit options still win.
     DEPLOYANGEL_API_TOKEN: ${{ secrets.DEPLOYANGEL_API_TOKEN }}
 ```
 
+In GitHub Actions, `verify` also puts the verdict, its failing findings, and
+new exceptions on the job's summary page.
+
 ### When a release never reports
 
 A registered release must start reporting within 15 minutes of being

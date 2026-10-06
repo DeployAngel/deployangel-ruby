@@ -5,6 +5,10 @@
 - Heroku: the commit comes from `HEROKU_BUILD_COMMIT`
   (`heroku labs:enable runtime-dyno-build-metadata`) when it's set, and from
   `HEROKU_SLUG_COMMIT`, which Heroku has deprecated, otherwise.
+- In GitHub Actions, `deployangel verify` and `status` also add the verdict,
+  its failing and warning findings, new exceptions, and a dashboard link to
+  the job's summary page (`GITHUB_STEP_SUMMARY`). Output and exit codes are
+  unchanged.
 
 ## 0.1.10 (2026-10-04)
 

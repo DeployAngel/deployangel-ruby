@@ -104,6 +104,47 @@ RSpec.describe DeployAngel::CLI do
     expect(stdout.string).not_to include("8640000")
   end
 
+  it "adds the verdict to the GitHub Actions job summary" do
+    document = verdict_document(state: "closed", verdict: "failed")
+    document["findings"] = [ { "signal" => "p95_latency", "scope" => "route:GET /a|b", "status" => "failing",
+                               "baseline_value" => 120.0, "observed_value" => 480.0, "observed_n" => 900 },
+                             { "signal" => "job_failure_rate", "scope" => "application", "status" => "pass" } ]
+    document["exceptions"] = [ { "exception_class" => "KeyError", "top_frame" => "app/jobs/sync_job.rb#perform", "count" => 3 } ]
+
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "summary.md")
+      code = run("verify", "--format=json", client: FakeClient.new(documents: [ document ]), env: { "GITHUB_STEP_SUMMARY" => path })
+
+      expect(code).to eq(1)
+      summary = File.read(path)
+      expect(summary).to include("### DeployAngel: v184 failed", "| failing | p95 latency on route:GET /a\\|b: 120 ms -> 480 ms (900 samples) |",
+        "**New exceptions**", "- KeyError in app/jobs/sync_job.rb#perform (3x)",
+        "[Open in DeployAngel](https://app.deployangel.com/apps/1/deployments/42)")
+      expect(summary).not_to include("Job failure rate")
+      expect(JSON.parse(stdout.string).dig("verification", "verdict")).to eq("failed")
+    end
+  end
+
+  it "says in the job summary when an initial check isn't a clearance, or no deployment was found" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "summary.md")
+      ok = FakeClient.new(documents: [ verdict_document(state: "observing", initial_check: { "result" => "no_problems_so_far" }) ])
+      run("verify", "--until=initial", client: ok, env: { "GITHUB_STEP_SUMMARY" => path })
+      run("verify", client: FakeClient.new(deployments_list: []), env: { "GITHUB_STEP_SUMMARY" => path })
+
+      expect(File.read(path)).to include("### DeployAngel: v184 has no problems so far, not cleared yet",
+        "Initial check: no problems so far. Not cleared yet.", "### DeployAngel: no deployment found for 81ac27d0000")
+    end
+  end
+
+  it "still exits with the verdict when the job summary can't be written" do
+    client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: "verified") ])
+    code = run("verify", "--format=json", client: client, env: { "GITHUB_STEP_SUMMARY" => "/nonexistent/summary.md" })
+
+    expect(code).to eq(0)
+    expect(stderr.string).to include("couldn't write the job summary")
+  end
+
   it "registers deployments and reports checks against the current commit" do
     client = FakeClient.new
     expect(run("release", "--version=v185", client: client)).to eq(0)
