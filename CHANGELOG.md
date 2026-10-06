@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.15 (2026-10-06)
 
 - Checkpoints report whether they were recorded in an HTTP request or a job
   (`http` and `job` counts on each checkpoint), so DeployAngel compares a
