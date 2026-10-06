@@ -137,9 +137,11 @@ module DeployAngel
             when "get_verification" then waiter.wait(target(arguments), wait: false).then { |o| verification_content(o) }
             when "wait_for_verification" then wait_content(arguments)
             when "get_exercise_plan" then waiter.wait(target(arguments), wait: false).then { |o| plan_content(o) }
-            when "list_deployments" then @client.deployments(limit: arguments.fetch("limit", 10))
+            # MCP requires structured content to be an object, never a bare list.
+            when "list_deployments" then { "deployments" => @client.deployments(limit: arguments.fetch("limit", 10)) }
             when "get_exception" then @client.exception(arguments.fetch("fingerprint") { raise ArgumentError, "fingerprint is required" })
-            when "list_late_regressions" then @client.late_regressions(since: arguments["since"], limit: arguments.fetch("limit", 10))
+            when "list_late_regressions"
+              { "late_regressions" => @client.late_regressions(since: arguments["since"], limit: arguments.fetch("limit", 10)) }
             when "register_deployment"
               raise ArgumentError, "register_deployment is not available for this token" unless scopes.include?("deployments")
 

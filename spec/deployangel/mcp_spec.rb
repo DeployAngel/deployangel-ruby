@@ -43,6 +43,20 @@ RSpec.describe DeployAngel::MCP::Server do
     expect(request("initialize")["result"]["instructions"]).to include("get_exercise_plan", "warm_up")
   end
 
+  it "returns every tool's structured content as an object, as MCP requires, never a bare list" do
+    client.scopes = %w[verifications:read deployments]
+    calls = { "get_verification" => {}, "wait_for_verification" => { "timeout_seconds" => 1 }, "get_exercise_plan" => {},
+              "list_deployments" => {}, "get_exception" => { "fingerprint" => "abc" }, "list_late_regressions" => {},
+              "register_deployment" => { "commit" => "abc1234" } }
+    expect(request("tools/list").dig("result", "tools").map { |tool| tool["name"] }).to match_array(calls.keys)
+
+    calls.each do |name, arguments|
+      result = request("tools/call", { "name" => name, "arguments" => arguments })["result"]
+      expect(result["structuredContent"]).to be_a(Hash), "#{name} returned #{result["structuredContent"].class}"
+    end
+    expect(request("tools/call", { "name" => "list_deployments" }).dig("result", "structuredContent")).to eq("deployments" => [ { "id" => 42 } ])
+  end
+
   it "waits for a verdict and returns structured content with the exit code's meaning" do
     result = request("tools/call", { "name" => "wait_for_verification", "arguments" => { "until" => "verdict" } })["result"]
 
