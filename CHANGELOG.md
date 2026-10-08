@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The agent reports from every Rails environment but `development` and `test`,
+  so a staging or preview app running with `RAILS_ENV=staging` works without
+  `DEPLOYANGEL_ENABLED=true`. `config.environments`, when set, still limits it to
+  the listed environments.
+
 ## 0.1.16 (2026-10-08)
 
 - The agent finds the release in a git checkout when nothing earlier names

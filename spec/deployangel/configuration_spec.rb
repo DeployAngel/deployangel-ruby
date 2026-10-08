@@ -10,12 +10,21 @@ RSpec.describe DeployAngel::Configuration do
     expect(config.revision).to eq("abc1234")
   end
 
-  it "is active only in production by default, and only with a token" do
+  it "is active in every environment but development and test by default, and only with a token" do
     config = described_class.new("DEPLOYANGEL_TOKEN" => "t")
 
-    expect(config.active?("production")).to be(true)
+    expect(%w[production staging preview].map { |environment| config.active?(environment) }).to all(be(true))
     expect(config.active?("development")).to be(false)
+    expect(config.active?("test")).to be(false)
     expect(described_class.new({}).active?("production")).to be(false)
+  end
+
+  it "reports only from the listed environments when they're set" do
+    config = described_class.new("DEPLOYANGEL_TOKEN" => "t")
+    config.environments = %w[production]
+
+    expect(config.active?("production")).to be(true)
+    expect(config.active?("staging")).to be(false)
   end
 
   it "sends exception messages unless DEPLOYANGEL_EXCEPTION_MESSAGES turns them off" do

@@ -17,7 +17,7 @@ module DeployAngel
       @token = env["DEPLOYANGEL_TOKEN"]
       @endpoint = env["DEPLOYANGEL_URL"] || DEFAULT_ENDPOINT
       @enabled = parse_boolean(env["DEPLOYANGEL_ENABLED"])
-      @environments = %w[production]
+      @environments = nil
       @release_version = env["DEPLOYANGEL_RELEASE_VERSION"]
       @revision = env["DEPLOYANGEL_REVISION"]
       @flush_interval = 60
@@ -38,13 +38,19 @@ module DeployAngel
       @sidekiq_cron_schedule_file = nil
     end
 
-    # Reports only with a token. By default only in the listed
-    # environments; DEPLOYANGEL_ENABLED forces it on or off.
+    # Reports only with a token, and by default in every environment but
+    # these, so staging and preview apps work as they are while a token
+    # copied into a developer's .env stays quiet.
+    NON_REPORTING_ENVIRONMENTS = %w[development test].freeze
+
+    # config.environments, when set, lists the only environments to report
+    # from; DEPLOYANGEL_ENABLED forces it on or off.
     def active?(environment)
       return false if token.to_s.empty? || endpoint.to_s.empty?
       return enabled unless enabled.nil?
+      return environments.map(&:to_s).include?(environment.to_s) if environments
 
-      environments.include?(environment.to_s)
+      !NON_REPORTING_ENVIRONMENTS.include?(environment.to_s)
     end
 
     # Whether requests to a route are left out. Rails answers HEAD with the

@@ -142,7 +142,7 @@ Environment variables are enough for most apps. To override in code:
 ```ruby
 # config/initializers/deployangel.rb
 DeployAngel.configure do |config|
-  config.environments = %w[production staging] # default: production only
+  config.environments = %w[production] # default: every environment but development and test
 end
 ```
 
