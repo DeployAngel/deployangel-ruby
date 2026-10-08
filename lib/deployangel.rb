@@ -34,10 +34,10 @@ module DeployAngel
     # Called by the Railtie after the app boots. Web server processes start
     # reporting immediately, so idle processes still send heartbeats; other
     # processes (console, rake) only report after recording a request.
-    def start(environment:, root: nil, framework: nil, framework_version: nil, logger: nil)
+    def start(environment:, root: nil, framework: nil, framework_version: nil, logger: nil, metadata: nil)
       configuration.logger = logger if logger
       @agent = Agent.new(config: configuration, environment: environment, root: root,
-        framework: framework, framework_version: framework_version, eager: server_process?)
+        framework: framework, framework_version: framework_version, eager: server_process?, metadata: metadata)
       install_exit_hook
       @agent
     rescue StandardError => e

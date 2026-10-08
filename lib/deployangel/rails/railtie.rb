@@ -22,14 +22,16 @@ module DeployAngel
 
       config.after_initialize do |app|
         DeployAngel::Apartment.install if DeployAngel.configuration.exception_messages
-        agent = DeployAngel.start(
+        # The metadata goes in at start, before the reporter thread can run:
+        # the code fingerprint is built from its file digests.
+        DeployAngel.start(
           environment: ::Rails.env,
           root: ::Rails.root.to_s,
           framework: "rails",
           framework_version: ::Rails.version,
-          logger: ::Rails.logger
+          logger: ::Rails.logger,
+          metadata: DeployAngel::Rails::Metadata.new(app: app, config: DeployAngel.configuration, root: ::Rails.root.to_s, environment: ::Rails.env)
         )
-        agent&.metadata = DeployAngel::Rails::Metadata.new(app: app, config: DeployAngel.configuration, root: ::Rails.root.to_s, environment: ::Rails.env)
       end
     end
   end

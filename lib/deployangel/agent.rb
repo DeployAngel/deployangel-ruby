@@ -20,7 +20,7 @@ module DeployAngel
     attr_writer :metadata
 
     def initialize(config:, environment:, root: nil, framework: nil, framework_version: nil,
-                   env: ENV, transport: nil, clock: -> { Time.now.utc }, eager: false)
+                   env: ENV, transport: nil, clock: -> { Time.now.utc }, eager: false, metadata: nil)
       @config = config
       @active = config.active?(environment)
       @release = Release.resolve(config: config, env: env, root: root)
@@ -35,6 +35,7 @@ module DeployAngel
       @root = root
       @clock = clock
       @eager = eager
+      @metadata = metadata
       @thread_mutex = Mutex.new
       @warned = {}
       reset_process_state

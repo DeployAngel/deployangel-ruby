@@ -199,6 +199,20 @@ RSpec.describe DeployAngel::Agent do
       agent.shutdown(timeout: 0.5)
     end
 
+    it "is built right away by an eager reporter given the metadata at start" do
+      built = Queue.new
+      allow(metadata).to receive(:file_manifest) { built << true && manifest }
+      config.revision = config.release_version = nil
+      config.logger = Logger.new(log)
+      eager = described_class.new(config: config, environment: "production", env: {}, transport: transport, clock: clock,
+        eager: true, metadata: metadata)
+
+      Timeout.timeout(2) { built.pop }
+      expect(eager.release.source).to eq("code_fingerprint")
+    ensure
+      eager&.shutdown(timeout: 0.5)
+    end
+
     it "waits for the metadata it's built from when the reporter starts first" do
       config.revision = config.release_version = nil
       config.logger = Logger.new(log)

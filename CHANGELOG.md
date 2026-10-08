@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- In Rails, the agent gets its file digests when it starts, so the reporter
+  works out the code fingerprint right away rather than at its first send, a
+  minute or two later. A file changed in between, as by an in-place
+  `git pull`, no longer ends up in the fingerprint of code that isn't running.
+
 ## 0.1.17 (2026-10-08)
 
 - The agent reports from every Rails environment but `development` and `test`,
