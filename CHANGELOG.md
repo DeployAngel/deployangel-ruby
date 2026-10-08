@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.17 (2026-10-08)
 
 - The agent reports from every Rails environment but `development` and `test`,
   so a staging or preview app running with `RAILS_ENV=staging` works without
