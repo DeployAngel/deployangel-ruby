@@ -263,6 +263,71 @@ RSpec.describe DeployAngel::CLI do
     end
   end
 
+  describe "install docker" do
+    around { |example| Dir.mktmpdir { |root| @root = root; example.run } }
+
+    let(:dockerfile) { File.join(@root, "Dockerfile") }
+    let(:lines) do
+      [ "# The commit this image runs, for DeployAngel. Build with --build-arg GIT_SHA=$(git rev-parse HEAD).\n",
+        "ARG GIT_SHA\n", "ENV DEPLOYANGEL_REVISION=$GIT_SHA\n" ].join
+    end
+
+    def install = described_class.new(%w[install docker], stdout: stdout, stderr: stderr, root: @root).run
+
+    it "adds the revision at the end of the last stage, before its CMD, so earlier layers stay cached" do
+      File.write(dockerfile, <<~DOCKERFILE)
+        FROM ruby:3.4 AS build
+        RUN bundle install
+        CMD ["build"]
+
+        FROM ruby:3.4-slim
+        COPY --from=build /rails /rails
+        RUN apt-get install -y \\
+            libpq5
+        ENTRYPOINT ["/rails/bin/docker-entrypoint"]
+
+        # Start the server
+        EXPOSE 80
+        # Thrust in front of Puma
+        CMD ["./bin/thrust", "./bin/rails", "server"]
+      DOCKERFILE
+
+      expect(install).to eq(0)
+      expect(File.read(dockerfile)).to end_with("EXPOSE 80\n#{lines}# Thrust in front of Puma\nCMD [\"./bin/thrust\", \"./bin/rails\", \"server\"]\n")
+      expect(File.read(dockerfile).scan("ARG GIT_SHA").size).to eq(1)
+      expect(stdout.string).to include("docker build --build-arg GIT_SHA=$(git rev-parse HEAD) .",
+        "fly deploy --build-arg GIT_SHA=$(git rev-parse HEAD)", "build-args: GIT_SHA=${{ github.sha }}", "KAMAL_VERSION")
+    end
+
+    it "goes before the first of the CMD and ENTRYPOINT lines that end the stage" do
+      File.write(dockerfile, "FROM ruby:3.4\nUSER app\nENTRYPOINT [\"bin/entry\"]\nCMD [\"bin/web\"]\n")
+
+      install
+      expect(File.read(dockerfile)).to eq("FROM ruby:3.4\nUSER app\n#{lines}ENTRYPOINT [\"bin/entry\"]\nCMD [\"bin/web\"]\n")
+    end
+
+    it "appends to a Dockerfile whose last stage has no CMD or ENTRYPOINT" do
+      File.write(dockerfile, "FROM ruby:3.4\nCOPY . /app")
+
+      expect(install).to eq(0)
+      expect(File.read(dockerfile)).to eq("FROM ruby:3.4\nCOPY . /app\n\n#{lines}")
+    end
+
+    it "changes nothing when the Dockerfile already sets DEPLOYANGEL_REVISION" do
+      File.write(dockerfile, "FROM ruby:3.4\nENV DEPLOYANGEL_REVISION=abc\n")
+
+      expect(install).to eq(0)
+      expect(File.read(dockerfile)).to eq("FROM ruby:3.4\nENV DEPLOYANGEL_REVISION=abc\n")
+      expect(stdout.string).to include("already sets DEPLOYANGEL_REVISION")
+    end
+
+    it "fails without a Dockerfile" do
+      expect(install).to eq(5)
+      expect(stderr.string).to include("no Dockerfile")
+      expect(File.exist?(dockerfile)).to be(false)
+    end
+  end
+
   it "reports usage and auth problems with exit 5" do
     expect(run("verify", "--until=never", client: FakeClient.new)).to eq(5)
     expect(run("check", "--name=x", client: FakeClient.new)).to eq(5)

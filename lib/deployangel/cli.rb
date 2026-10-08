@@ -33,7 +33,8 @@ module DeployAngel
         exception  Details for a fingerprint     deployangel exception FINGERPRINT
         check      Report a smoke test result    --name=NAME --status=pass|fail [--covers=a,b]
                                                  [--commit=SHA | --deployment=ID] [--details-url=URL]
-        install    Add a deploy hook             deployangel install kamal
+        install    Add a Kamal deploy hook, or    deployangel install kamal
+                   bake the commit into an image  deployangel install docker
         mcp        Run the MCP server over stdio (for coding agents)
 
       With no target, verify, plan, and check use the current git HEAD commit.
@@ -56,6 +57,25 @@ module DeployAngel
       # you run `kamal deploy`. Added by `deployangel install kamal`.
       bundle exec deployangel release || true
     SH
+
+    # Goes at the end of the Dockerfile's last stage: a value that changes
+    # with every commit invalidates the cache of every layer after it.
+    DOCKER_BUILD_HELP = <<~HELP.chomp
+      Pass the commit when you build the image:
+
+        docker build --build-arg GIT_SHA=$(git rev-parse HEAD) .
+        fly deploy --build-arg GIT_SHA=$(git rev-parse HEAD)
+        GitHub Actions (docker/build-push-action):
+          build-args: GIT_SHA=${{ github.sha }}
+
+      Kamal apps don't need this: DeployAngel reads Kamal's KAMAL_VERSION.
+    HELP
+
+    DOCKERFILE_LINES = <<~DOCKERFILE
+      # The commit this image runs, for DeployAngel. Build with --build-arg GIT_SHA=$(git rev-parse HEAD).
+      ARG GIT_SHA
+      ENV DEPLOYANGEL_REVISION=$GIT_SHA
+    DOCKERFILE
 
     def initialize(argv, env: ENV, stdin: $stdin, stdout: $stdout, stderr: $stderr, client: nil,
                    sleeper: ->(seconds) { sleep(seconds) }, clock: -> { Time.now }, git_head: nil, root: Dir.pwd)
@@ -206,12 +226,17 @@ module DeployAngel
         0
       end
 
+      def install
+        case (target = @argv.shift)
+        when "kamal" then install_kamal
+        when "docker" then install_docker
+        else usage_error("install needs a target: deployangel install kamal, or deployangel install docker")
+        end
+      end
+
       # Writes .kamal/hooks/post-deploy, or says what to add to a hook that
       # already exists, rather than overwriting it.
-      def install
-        target = @argv.shift
-        return usage_error("install needs a target: deployangel install kamal") unless target == "kamal"
-
+      def install_kamal
         relative = File.join(".kamal", "hooks", "post-deploy")
         path = File.join(@root, relative)
         if File.exist?(path)
@@ -229,6 +254,55 @@ module DeployAngel
         @stdout.puts("Created #{relative}. Each `kamal deploy` now registers its release with DeployAngel.",
           "Set DEPLOYANGEL_API_TOKEN (a \"CI deploys\" token) wherever you run kamal deploy.")
         0
+      end
+
+      # Adds DEPLOYANGEL_REVISION, from a GIT_SHA build arg, to the Dockerfile.
+      # It never edits CI workflows; it says what to pass instead.
+      def install_docker
+        path = File.join(@root, "Dockerfile")
+        unless File.file?(path)
+          @stderr.puts("deployangel: no Dockerfile in #{@root}; run this where your Dockerfile is")
+          return USAGE_ERROR
+        end
+
+        content = File.read(path)
+        if content.include?("DEPLOYANGEL_REVISION")
+          @stdout.puts("Dockerfile already sets DEPLOYANGEL_REVISION.")
+          return 0
+        end
+
+        File.write(path, with_revision(content))
+        @stdout.puts("Added DEPLOYANGEL_REVISION to the Dockerfile's last stage. #{DOCKER_BUILD_HELP}")
+        0
+      end
+
+      # Before the CMD and ENTRYPOINT lines that end the last stage, with any
+      # comment just above them, or at the end if the stage doesn't end with
+      # one. Continuation lines aren't instructions.
+      def with_revision(content)
+        lines = content.lines
+        instructions = []
+        continuing = false
+        lines.each_with_index do |line, index|
+          text = line.strip
+          next if text.empty? || text.start_with?("#")
+
+          instructions << [ index, text[/\A\w+/].to_s.upcase ] unless continuing
+          continuing = text.end_with?("\\")
+        end
+
+        stage = instructions.drop(instructions.rindex { |_, word| word == "FROM" } || 0)
+        trailing = stage.reverse.take_while { |_, word| %w[CMD ENTRYPOINT].include?(word) }
+        if trailing.empty?
+          lines[-1] = "#{lines[-1].chomp}\n" if lines.any?
+          lines << "\n" unless lines.empty? || lines[-1].strip.empty?
+          lines << DOCKERFILE_LINES
+        else
+          at = trailing.last.first
+          at -= 1 while at.positive? && lines[at - 1].strip.start_with?("#")
+          lines.insert(at, DOCKERFILE_LINES)
+        end
+        lines.join
       end
 
       def mcp

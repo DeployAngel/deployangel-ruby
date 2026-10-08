@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "tmpdir"
 
 RSpec.describe DeployAngel::Release do
@@ -100,6 +101,108 @@ RSpec.describe DeployAngel::Release do
 
       expect(release.commit).to eq("deadbeef123")
       expect(release.source).to eq("revision_file")
+    end
+  end
+
+  it "treats a blank DEPLOYANGEL_REVISION, as from an empty build arg, as unset" do
+    config = DeployAngel::Configuration.new("DEPLOYANGEL_REVISION" => "", "DEPLOYANGEL_RELEASE_VERSION" => " ")
+    release = described_class.resolve(config: config, env: { "RENDER_GIT_COMMIT" => "deadbeef123" })
+
+    expect(release.source).to eq("render")
+    expect(described_class.resolve(config: config, env: {})).to be_unknown
+  end
+
+  describe "git checkout" do
+    let(:sha) { "81ac27d0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" }
+
+    around { |example| Dir.mktmpdir { |dir| @dir = dir; example.run } }
+
+    def write(path, content)
+      path = File.join(@dir, path)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, content)
+    end
+
+    def resolve(root = @dir, env: {})
+      described_class.resolve(config: config, env: env, root: root)
+    end
+
+    it "reads a detached HEAD's commit" do
+      write(".git/HEAD", "#{sha.upcase}\n")
+
+      expect(resolve.to_protocol).to eq("version" => nil, "commit" => sha, "source" => "git_head")
+    end
+
+    it "follows a branch to its ref file, or to packed-refs" do
+      write(".git/HEAD", "ref: refs/heads/main\n")
+      write(".git/refs/heads/main", "#{sha}\n")
+      expect(resolve.commit).to eq(sha)
+
+      File.delete(File.join(@dir, ".git/refs/heads/main"))
+      write(".git/packed-refs", "# pack-refs with: peeled fully-peeled sorted\n" \
+        "1111111111111111111111111111111111111111 refs/heads/mainline\n#{sha} refs/heads/main\n^2222222222222222222222222222222222222222\n")
+      expect(resolve.commit).to eq(sha)
+    end
+
+    it "follows a worktree's gitdir file, finding shared refs in the common dir" do
+      write("repo/.git/refs/heads/feature", "#{sha}\n")
+      write("repo/.git/worktrees/shop/HEAD", "ref: refs/heads/feature\n")
+      write("repo/.git/worktrees/shop/commondir", "../..\n")
+      write("shop/.git", "gitdir: ../repo/.git/worktrees/shop\n")
+
+      expect(resolve(File.join(@dir, "shop")).to_protocol).to include("commit" => sha, "source" => "git_head")
+    end
+
+    it "looks up to 3 directories above the root" do
+      write(".git/HEAD", sha)
+      FileUtils.mkdir_p(File.join(@dir, "a/b/c/d"))
+
+      expect(resolve(File.join(@dir, "a/b/c")).commit).to eq(sha)
+      expect(resolve(File.join(@dir, "a/b/c/d")).source).not_to eq("git_head")
+    end
+
+    it "ignores refs outside refs/, malformed HEADs, and missing refs" do
+      write("secret", "#{sha}\n")
+      write(".git/HEAD", "ref: ../secret\n")
+      expect(resolve).to be_unknown
+
+      write(".git/HEAD", "ref: refs/../../secret\n")
+      expect(resolve).to be_unknown
+
+      write(".git/HEAD", "ref: refs/heads/gone\n")
+      expect(resolve).to be_unknown
+
+      write(".git/HEAD", "not a commit")
+      expect(resolve).to be_unknown
+
+      write(".git/HEAD", "ab" * 32)
+      expect(resolve).to be_unknown
+    end
+
+    it "comes after a REVISION file and before ECS" do
+      write(".git/HEAD", sha)
+      ecs = { "ECS_CONTAINER_METADATA_URI_V4" => "http://169.254.170.2/v4/abc" }
+      http = ->(_uri) { JSON.generate("Image" => "shop:v2") }
+
+      expect(described_class.resolve(config: config, env: ecs, root: @dir, http: http).source).to eq("git_head")
+
+      write("REVISION", "deadbeef123\n")
+      expect(resolve.source).to eq("revision_file")
+    end
+  end
+
+  describe ".code_fingerprint" do
+    let(:manifest) { { "hash" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "count" => 2, "truncated" => false } }
+
+    it "is the start of the file manifest's hash, as the version" do
+      expect(described_class.code_fingerprint(manifest).to_protocol)
+        .to eq("version" => "code:9f86d081884c", "commit" => nil, "source" => "code_fingerprint")
+    end
+
+    it "is nil when digests are off, truncated, or missing" do
+      expect(described_class.code_fingerprint(manifest.merge("truncated" => true))).to be_nil
+      expect(described_class.code_fingerprint("hash" => nil, "count" => 0, "truncated" => false)).to be_nil
+      expect(described_class.code_fingerprint(nil)).to be_nil
     end
   end
 

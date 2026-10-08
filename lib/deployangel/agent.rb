@@ -16,7 +16,7 @@ module DeployAngel
     # later still lands in time.
     FLUSH_JITTER = 1.0..50.0
 
-    attr_reader :config, :release, :instance
+    attr_reader :config, :instance
     attr_writer :metadata
 
     def initialize(config:, environment:, root: nil, framework: nil, framework_version: nil,
@@ -24,6 +24,11 @@ module DeployAngel
       @config = config
       @active = config.active?(environment)
       @release = Release.resolve(config: config, env: env, root: root)
+      # Nothing named the release, so the code fingerprint may. It hashes the
+      # app's files, so the reporter computes it before its first send (see
+      # #release), never at boot or in a request.
+      @fingerprint_pending = @release.unknown?
+      @release_mutex = Mutex.new
       @runtime = Protocol.runtime(framework: framework, framework_version: framework_version)
       @transport = transport || Transport.new(config)
       @env = env
@@ -33,13 +38,30 @@ module DeployAngel
       @thread_mutex = Mutex.new
       @warned = {}
       reset_process_state
-      warn_once(:unknown_release, "DeployAngel could not determine the release; set DEPLOYANGEL_REVISION " \
-        "or enable Heroku dyno metadata. Telemetry will not be attributed to deployments.") if @active && @release.unknown?
       start_reporter if @active && eager
     end
 
     def active?
       @active
+    end
+
+    # The release this process is running. The first call may build the file
+    # digests for the code fingerprint, so only the reporter thread and
+    # shutdown call it; requests and jobs never read the release.
+    def release
+      return @release unless @fingerprint_pending
+
+      @release_mutex.synchronize do
+        if @fingerprint_pending
+          @release = Release.code_fingerprint(@metadata&.file_manifest) || @release
+          @fingerprint_pending = false
+          warn_about_release
+        end
+      end
+      @release
+    rescue StandardError
+      @fingerprint_pending = false
+      @release
     end
 
     def record_request(route_key:, status:, duration_ms:, unhandled: false, in_totals: true)
@@ -113,7 +135,7 @@ module DeployAngel
       return 0 unless @active
 
       @aggregator.drain(include_current: include_current, max_periods: config.max_queued_payloads).each do |period|
-        @buffer.push(Transport.encode(Protocol.telemetry(period, instance: @instance, release: @release,
+        @buffer.push(Transport.encode(Protocol.telemetry(period, instance: @instance, release: release,
           runtime: @runtime, capabilities: capabilities)))
       end
       send_buffered
@@ -162,7 +184,7 @@ module DeployAngel
       return if @metadata_sent || @metadata.nil? || paused?
 
       base = { "protocol_version" => Protocol::VERSION, "instance" => @instance.to_protocol,
-               "release" => @release.to_protocol, "runtime" => @runtime }.merge(@metadata.to_protocol)
+               "release" => release.to_protocol, "runtime" => @runtime }.merge(@metadata.to_protocol)
       result = @transport.post(METADATA_PATH, base)
       return unless result.ok?
 
@@ -187,6 +209,10 @@ module DeployAngel
       end
 
       def run_reporter
+        # Off the request path, so a process that exits within a minute or two
+        # doesn't build the fingerprint at shutdown instead. Only once the
+        # framework has attached the metadata it's built from.
+        release if @metadata
         until @stopping
           sleep(seconds_until_next_flush)
           break if @stopping
@@ -240,6 +266,18 @@ module DeployAngel
 
       def paused?
         @paused_until && @clock.call < @paused_until
+      end
+
+      def warn_about_release
+        return unless @active
+
+        if @release.unknown?
+          warn_once(:unknown_release, "DeployAngel could not determine the release; set DEPLOYANGEL_REVISION " \
+            "or enable Heroku dyno metadata. Telemetry will not be attributed to deployments.")
+        elsif @release.source == "code_fingerprint"
+          warn_once(:code_fingerprint, "DeployAngel identifies releases by a fingerprint of the app's code. " \
+            "Set DEPLOYANGEL_REVISION to the deployed commit to see each release's commits and pull requests.")
+        end
       end
 
       def warn_once(key, message)

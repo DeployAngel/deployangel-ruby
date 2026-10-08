@@ -154,6 +154,92 @@ RSpec.describe DeployAngel::Agent do
     expect(exception["backtrace"]).to eq([ "app/controllers/orders_controller.rb#create" ])
   end
 
+  describe "code fingerprint" do
+    let(:log) { StringIO.new }
+    let(:manifest) { { "hash" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "count" => 2, "truncated" => false } }
+    let(:metadata) { instance_double(DeployAngel::Metadata, file_manifest: manifest, to_protocol: { "routes" => [] }) }
+    let(:agent) do
+      config.revision = config.release_version = nil
+      config.logger = Logger.new(log)
+      build_agent.tap { |agent| agent.metadata = metadata }
+    end
+
+    before { allow(DeployAngel::Release).to receive(:code_fingerprint).and_call_original }
+
+    it "is computed once, by the reporter before its first send, never at boot or on a request" do
+      agent.record_request(route_key: "GET /", status: 200, duration_ms: 1)
+      agent.record_exception(RuntimeError.new("boom"))
+      expect(DeployAngel::Release).not_to have_received(:code_fingerprint)
+      expect(metadata).not_to have_received(:file_manifest)
+      expect(log.string).to be_empty
+
+      agent.send_metadata
+      clock.advance(60)
+      agent.flush
+      clock.advance(60)
+      agent.flush
+
+      fingerprint = { "version" => "code:9f86d081884c", "commit" => nil, "source" => "code_fingerprint" }
+      metadata_post, *telemetry = transport.posts
+      expect(metadata_post.last["release"]).to eq(fingerprint)
+      expect(telemetry.map { |_, payload| payload["release"] }).to eq([ fingerprint ] * 2)
+      expect(DeployAngel::Release).to have_received(:code_fingerprint).once
+      expect(log.string.scan("fingerprint of the app's code").size).to eq(1)
+    end
+
+    it "is computed as soon as the reporter starts, so a short-lived process doesn't hash at exit" do
+      built = Queue.new
+      allow(metadata).to receive(:file_manifest) { built << true && manifest }
+      allow(agent).to receive(:start_reporter).and_call_original
+      agent.start_reporter
+
+      Timeout.timeout(2) { built.pop }
+      expect(agent.release.source).to eq("code_fingerprint")
+    ensure
+      agent.shutdown(timeout: 0.5)
+    end
+
+    it "waits for the metadata it's built from when the reporter starts first" do
+      config.revision = config.release_version = nil
+      config.logger = Logger.new(log)
+      early = build_agent
+      allow(early).to receive(:start_reporter).and_call_original
+      early.start_reporter
+      sleep(0.05)
+      early.metadata = metadata
+      early.flush(include_current: true)
+
+      expect(transport.posts.last.last["release"]["source"]).to eq("code_fingerprint")
+    ensure
+      early&.shutdown(timeout: 0.5)
+    end
+
+    it "computes it once when the reporter and shutdown race" do
+      allow(metadata).to receive(:file_manifest) { sleep(0.05) && manifest }
+      Array.new(4) { Thread.new { agent.release } }.each(&:join)
+
+      expect(metadata).to have_received(:file_manifest).once
+    end
+
+    it "stays unknown, and warns so, when there are no file digests" do
+      allow(metadata).to receive(:file_manifest).and_return("hash" => nil, "count" => 0, "truncated" => false)
+      expect(log.string).to be_empty
+
+      agent.flush(include_current: true)
+
+      expect(transport.posts.sole.last["release"]).to eq("version" => nil, "commit" => nil, "source" => "unknown")
+      expect(log.string).to include("could not determine the release")
+    end
+
+    it "is never computed when the release is known" do
+      config.logger = Logger.new(log)
+      build_agent.tap { |agent| agent.metadata = metadata }.flush(include_current: true)
+
+      expect(metadata).not_to have_received(:file_manifest)
+      expect(transport.posts.sole.last["release"]["source"]).to eq("config")
+    end
+  end
+
   describe "exception messages" do
     let(:agent) do
       described_class.new(config: config, environment: "production", env: {}, transport: transport, clock: clock, root: "/app")

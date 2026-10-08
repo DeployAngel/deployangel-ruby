@@ -167,6 +167,8 @@ module DeployAngel
       end
     end
 
+    # Built once per process, by the reporter: the metadata send and the
+    # code fingerprint (Release.code_fingerprint) both read it.
     def file_manifest
       @file_manifest ||= begin
         if @config.file_digests
@@ -180,9 +182,9 @@ module DeployAngel
         else
           { "hash" => nil, "count" => 0, "truncated" => false, "files" => {} }
         end
+      rescue StandardError
+        { "hash" => nil, "count" => 0, "truncated" => false, "files" => {} }
       end
-    rescue StandardError
-      { "hash" => nil, "count" => 0, "truncated" => false, "files" => {} }
     end
   end
 end

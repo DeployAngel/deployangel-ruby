@@ -36,26 +36,46 @@ The agent must know which release it is running. It finds it in this order:
    didn't come from GitHub
 7. Coolify: `SOURCE_COMMIT`. Dokku: `GIT_REV`
 8. a `REVISION` file in the app root, which Capistrano writes and any build step can
-9. ECS, including Fargate: the container's image, from the metadata endpoint ECS
-   provides (one local request at boot). The image tag is the release when it's a
-   commit or a version like `v1.4.2`; with a moving tag like `latest`, the image
-   digest is
+9. a git checkout, for servers deployed by `git pull`, Fabric, or Ansible: the commit
+   `HEAD` names, read from `.git` in the app root or up to 3 directories above it
+   (worktrees and submodules included). The agent reads the files; it never runs `git`
+10. ECS, including Fargate: the container's image, from the metadata endpoint ECS
+    provides (one local request at boot). The image tag is the release when it's a
+    commit or a version like `v1.4.2`; with a moving tag like `latest`, the image
+    digest is
+11. a fingerprint of the app's code, reported as `code:` and 12 hex characters: the
+    hash of the [file digests](#what-it-sends) the agent already computes, so the
+    same code is the same release. It needs file digests on, and is worked out in
+    the background when the reporter starts, not at boot. Without a commit, the
+    dashboard shows which files changed but not the commits and pull requests, so
+    the agent logs a warning suggesting `DEPLOYANGEL_REVISION`
 
 For other Docker deploys (compose, Swarm, Kubernetes), and on ECS to see each
 release by its commit, bake the commit into the image, since `.dockerignore`
 usually leaves `.git` out:
+
+```bash
+bundle exec deployangel install docker
+```
+
+adds this to the end of the Dockerfile's last stage, before its `CMD` (so the
+layers above it stay cached):
 
 ```dockerfile
 ARG GIT_SHA
 ENV DEPLOYANGEL_REVISION=$GIT_SHA
 ```
 
-and build with `docker build --build-arg GIT_SHA=$(git rev-parse HEAD) .`. On
-DigitalOcean App Platform, set `DEPLOYANGEL_REVISION: ${_self.COMMIT_HASH}` in
-the app spec. On Elastic Beanstalk, see
-[Deploying to Elastic Beanstalk](#deploying-to-elastic-beanstalk). If the agent
-finds none of these, its telemetry can't be tied to a deploy, and the dashboard
-says so.
+Then build with `docker build --build-arg GIT_SHA=$(git rev-parse HEAD) .`
+(`fly deploy --build-arg GIT_SHA=$(git rev-parse HEAD)` on Fly.io, or
+`build-args: GIT_SHA=${{ github.sha }}` with GitHub's docker/build-push-action).
+It changes nothing if the Dockerfile already sets `DEPLOYANGEL_REVISION`, and
+never edits CI workflows. A build without the argument leaves the variable
+empty, which counts as unset. On DigitalOcean App Platform, set
+`DEPLOYANGEL_REVISION: ${_self.COMMIT_HASH}` in the app spec. On Elastic
+Beanstalk, see [Deploying to Elastic Beanstalk](#deploying-to-elastic-beanstalk).
+If the agent finds none of these, its telemetry can't be tied to a deploy, and
+the dashboard says so.
 
 ## What it sends
 
@@ -297,6 +317,9 @@ It writes `.kamal/hooks/post-deploy`, which runs `deployangel release` after eac
 `kamal deploy` (or adds nothing if you already have a hook, and prints the line
 to add). Set `DEPLOYANGEL_API_TOKEN` (a CI deploys token) wherever you run
 `kamal deploy`. The hook never fails a deploy.
+
+Kamal apps don't need `deployangel install docker`: `KAMAL_VERSION` already
+identifies the release.
 
 ### Deploying with Capistrano
 
