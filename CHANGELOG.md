@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.16 (2026-10-08)
 
 - The agent finds the release in a git checkout when nothing earlier names
   it: the commit `HEAD` names, read from `.git` in the app root or up to 3
