@@ -49,6 +49,12 @@ module DeployAngel
         { name: name, status: status, covers: covers, details_url: details_url }.compact)
     end
 
+    # What `deployangel exercise` sent (spec §16, Exercise records). A
+    # "CLI & coding agents" token may record one: it only labels the release.
+    def record_exercise(deployment_id, routes:, skipped:, ran_at:)
+      post("/api/v1/deployments/#{deployment_id}/exercises", { routes: routes, skipped: skipped, ran_at: ran_at })
+    end
+
     private
       def get(path, params = {})
         uri = URI("#{@endpoint}#{path}")

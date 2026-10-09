@@ -29,6 +29,71 @@ RSpec.describe DeployAngel::CLI do
     expect(client.calls.first).to eq([ :deployments, { commit: "81ac27d0000", version: nil, limit: 1 } ])
   end
 
+  describe "exercise" do
+    let(:plan) do
+      exercise_plan.merge("items" => exercise_plan["items"] + [
+        { "kind" => "route", "key" => "GET /products", "runs" => 1, "runs_needed" => 3, "mutating" => false },
+        { "kind" => "route", "key" => "GET /about", "runs" => 0, "mutating" => false },
+        { "kind" => "route", "key" => "GET /items/<int:pk>/", "runs" => 0, "mutating" => false }
+      ])
+    end
+    let(:document) { verdict_document(state: "observing").merge("exercise_plan" => plan) }
+    let(:sent) { [] }
+
+    def exercise(*argv, client:, answer: 200)
+      described_class.new([ "exercise", *argv ], env: {}, stdout: stdout, stderr: stderr, client: client, sleeper: sleeper,
+        clock: clock, git_head: "81ac27d0000", requester: ->(url) { sent << url && answer }).run
+    end
+
+    it "sends the plan's read-only requests from here, spreads the request shortfall, and records what it sent" do
+      client = FakeClient.new(documents: [ document ])
+      expect(exercise("--url=https://shop.example.com/", client: client)).to eq(0)
+
+      # 12 of 30 requests: 18 more, 2 + 1 of them by the routes' own runs needed.
+      expect(sent.tally).to eq("https://shop.example.com/products" => 10, "https://shop.example.com/about" => 8)
+      exercise_call = client.calls.find { |call| call.first == :exercise }
+      expect(exercise_call[1]).to eq(42)
+      expect(exercise_call[2][:routes]).to eq([
+        { "key" => "GET /products", "requests" => 10, "statuses" => { "2xx" => 10 } },
+        { "key" => "GET /about", "requests" => 8, "statuses" => { "2xx" => 8 } }
+      ])
+      expect(exercise_call[2][:skipped]).to eq([
+        { "key" => "GET /orders/:id", "reason" => "needs a path parameter" },
+        { "key" => "POST /password_resets", "reason" => "changes data" },
+        { "key" => "GET /items/<int:pk>/", "reason" => "needs a path parameter" }
+      ])
+      expect(stdout.string).to include("Sent 18 requests to https://shop.example.com/", "GET /products ×10: 10 2xx",
+        "POST /password_resets (changes data)", "Recorded on the release.")
+    end
+
+    it "sends nothing on a dry run, and caps the requests it sends" do
+      client = FakeClient.new(documents: [ document ])
+      exercise("--url=https://shop.example.com", "--dry-run", "--max-requests=5", client: client)
+
+      expect(sent).to be_empty
+      expect(client.calls.map(&:first)).not_to include(:exercise)
+      expect(stdout.string).to include("Would send 5 requests:", "https://shop.example.com/products ×")
+    end
+
+    it "stops when the app doesn't answer, and says so" do
+      client = FakeClient.new(documents: [ document ])
+      expect(exercise("--url=https://shop.example.com", client: client, answer: nil)).to eq(5)
+
+      expect(sent.size).to eq(DeployAngel::Exerciser::MAX_CONSECUTIVE_ERRORS)
+      expect(stdout.string).to include("Stopped early: https://shop.example.com isn't answering.")
+    end
+
+    it "sends nothing for a release with nothing to exercise, and needs the production URL" do
+      cleared = verdict_document(state: "closed", verdict: "verified").merge("exercise_plan" => { "status" => "nothing_needed", "summary" => "Cleared." })
+      expect(exercise("--url=https://shop.example.com", client: FakeClient.new(documents: [ cleared ]))).to eq(0)
+      expect(stdout.string).to include("Nothing to exercise. Cleared.")
+      expect(sent).to be_empty
+
+      expect(exercise("--url=shop.example.com", client: FakeClient.new(documents: [ document ]))).to eq(5)
+      expect(stderr.string).to include("exercise needs --url")
+    end
+  end
+
   describe "plan" do
     let(:document) { verdict_document(state: "observing").merge("exercise_plan" => exercise_plan) }
 

@@ -36,6 +36,11 @@ class FakeClient
     { "id" => 1, "status" => attributes[:status], "deployment_id" => 42 }
   end
 
+  def record_exercise(deployment_id, **attributes)
+    @calls << [ :exercise, deployment_id, attributes ]
+    { "id" => 1, "deployment_id" => deployment_id }
+  end
+
   def exception(fingerprint) = { "fingerprint" => fingerprint, "exception_class" => "NoMethodError", "backtrace" => [] }
   def late_regressions(**) = []
 end

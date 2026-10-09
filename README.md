@@ -392,6 +392,7 @@ bundle exec deployangel verify --wait                  # current git HEAD, until
 bundle exec deployangel verify --wait --until=initial  # return at the 15-minute initial check
 bundle exec deployangel status                         # latest deployment
 bundle exec deployangel plan                           # what to exercise so a release clears sooner
+bundle exec deployangel exercise --url=https://example.com  # send the plan's read-only requests
 bundle exec deployangel release --commit=$SHA          # register a deploy (manual or CI)
 bundle exec deployangel check --name="smoke: signup" --status=pass --covers=registration
 bundle exec deployangel exception <fingerprint>
@@ -464,16 +465,27 @@ check labels what it covered; only the requests themselves count as
 evidence. A release deployed during an app's first 24 hours can't clear,
 so its plan lists nothing.
 
+`deployangel exercise --url=<production URL>` does the read-only part for
+you, from wherever it runs: it requests the plan's GET routes that have no
+path parameters, spreading any request shortfall across them (at most 200
+requests, about 5 a second, as `DeployAngel-Exercise`), then records what it
+sent on the release, where the page lists it under "Exercised from your
+side". It skips and names routes that change data or need a path
+parameter. A "CLI & coding agents" token can run it. `--dry-run` shows what
+it would send.
+
 ### Suggested instructions for your coding agent
 
 `deployangel install agents` adds instructions like these. To add them
 yourself, put this in your `CLAUDE.md` or `AGENTS.md`:
 
 ```markdown
-## Production verification
+## Production verification (DeployAngel)
 
-After deploying, run `bundle exec deployangel verify --wait --until initial`
-(or call the `wait_for_verification` MCP tool with `until: "initial"`).
+After deploying, or pushing a commit that deploys, wait for DeployAngel's
+verdict: call the `wait_for_verification` MCP tool with the commit and
+`until: "initial"`, calling again while it's in progress, or run
+`bundle exec deployangel verify --commit=<sha> --wait --until=initial`.
 
 - Exit 0 / verified: the release is cleared. Report the clearance line and
   anything DeployAngel is still watching, then move on.
@@ -483,17 +495,16 @@ After deploying, run `bundle exec deployangel verify --wait --until initial`
 - Exit 7: warnings at the initial check. Report them and review the findings.
   The release is NOT cleared.
 - Exit 2 / inconclusive: the release is NOT verified. Do not claim success.
-- Exit 1 / failed: read the findings and exceptions, investigate the likely
-  cause, and propose a fix. Do not roll back or change production without
-  explicit approval.
+- Exit 1 / failed: read the findings and exceptions (`get_exception`),
+  investigate the likely cause, and propose a fix. Do not roll back or change
+  production without explicit approval.
 - Exit 3: still verifying; run the command again.
-- Not cleared yet and you can reach production: run
-  `bundle exec deployangel plan --format=json` (or `get_exercise_plan`). If
-  its status is "exercisable" or "waiting_for_activity", exercise the listed
-  items against production: read-only routes freely, routes marked mutating
-  only with a test account or after asking. Then run its `report_with`
-  command and wait again. If the status is "warm_up", don't exercise
-  anything: the release can't clear until DeployAngel has a day of history.
+- Not cleared yet: call `get_exercise_plan` (or `bundle exec deployangel plan`).
+  If its status is "exercisable" or "waiting_for_activity", run
+  `bundle exec deployangel exercise --url=<production URL>`: it sends the
+  plan's read-only requests and records them on the release. Offer to
+  exercise what it skips: routes that change data only with a test account
+  or after asking. If the status is "warm_up", nothing run can clear it.
 ```
 
 ## Development

@@ -11,13 +11,14 @@ require_relative "client"
 require_relative "ci_environment"
 require_relative "verification_waiter"
 require_relative "cli/formatter"
+require_relative "exerciser"
 
 module DeployAngel
   # `deployangel` command for developers, CI, and coding agents.
   # Runs without booting Rails.
   class CLI
     USAGE_ERROR = 5
-    COMMANDS = %w[release verify status exception check install mcp version help].freeze
+    COMMANDS = %w[release verify status plan exercise exception check install mcp version help].freeze
 
     HELP = <<~TEXT
       Usage: deployangel <command> [options]
@@ -30,6 +31,8 @@ module DeployAngel
         status     Latest deployment and its verification
         plan       What to exercise so a release  [--commit=SHA | --version=V | --deployment=ID]
                    clears sooner                 [--format=text|json]
+        exercise   Send the plan's read-only      --url=PRODUCTION_URL [--commit=SHA | --version=V | --deployment=ID]
+                   requests to production        [--max-requests=200] [--dry-run]
         exception  Details for a fingerprint     deployangel exception FINGERPRINT
         check      Report a smoke test result    --name=NAME --status=pass|fail [--covers=a,b]
                                                  [--commit=SHA | --deployment=ID] [--details-url=URL]
@@ -98,10 +101,11 @@ module DeployAngel
         production without explicit approval.
       - Exit 3: still verifying; run the command again.
       - Not cleared yet: call `get_exercise_plan` (or `bundle exec deployangel plan`).
-        If its status is "exercisable" or "waiting_for_activity", say what it lists
-        and offer to exercise it: read-only routes freely, routes marked mutating
-        only with a test account or after asking. If the status is "warm_up",
-        nothing run can clear it.
+        If its status is "exercisable" or "waiting_for_activity", run
+        `bundle exec deployangel exercise --url=<production URL>`: it sends the
+        plan's read-only requests and records them on the release. Offer to
+        exercise what it skips: routes that change data only with a test account
+        or after asking. If the status is "warm_up", nothing run can clear it.
       #{AGENTS_END}
     MARKDOWN
 
@@ -119,7 +123,7 @@ module DeployAngel
     DOCKERFILE
 
     def initialize(argv, env: ENV, stdin: $stdin, stdout: $stdout, stderr: $stderr, client: nil,
-                   sleeper: ->(seconds) { sleep(seconds) }, clock: -> { Time.now }, git_head: nil, root: Dir.pwd)
+                   sleeper: ->(seconds) { sleep(seconds) }, clock: -> { Time.now }, git_head: nil, root: Dir.pwd, requester: nil)
       @root = root
       @argv = argv.dup
       @env = env
@@ -130,6 +134,7 @@ module DeployAngel
       @sleeper = sleeper
       @clock = clock
       @git_head = git_head
+      @requester = requester
     end
 
     def run
@@ -139,6 +144,7 @@ module DeployAngel
       when "verify" then verify
       when "status" then verify(status: true)
       when "plan" then plan
+      when "exercise" then exercise
       when "exception" then exception
       when "check" then check
       when "install" then install
@@ -236,6 +242,56 @@ module DeployAngel
         json = { "deployment" => document["deployment"], "exercise_plan" => document["exercise_plan"] }
         output(json, options[:format]) { Formatter.exercise_plan(document) }
         0
+      end
+
+      # Sends the plan's read-only requests from here, then records what it
+      # sent on the release (spec §16, Exercise records).
+      def exercise
+        options = parse(max_requests: Exerciser::MAX_REQUESTS, dry_run: false) do |o, opts|
+          o.on("--url=URL") { |v| opts[:url] = v }
+          o.on("--commit=SHA") { |v| opts[:commit] = v }
+          o.on("--version=VERSION") { |v| opts[:version] = v }
+          o.on("--deployment=ID") { |v| opts[:deployment_id] = v }
+          o.on("--max-requests=N", Integer) { |v| opts[:max_requests] = v }
+          o.on("--dry-run") { opts[:dry_run] = true }
+        end
+        return usage_error("exercise needs --url, the app's production URL, like https://example.com") unless options[:url].to_s.match?(%r{\Ahttps?://[^/\s]+})
+
+        target = target_from(options)
+        return usage_error("no target: pass --commit, --version, or --deployment, or run inside a git repository") unless target
+
+        outcome = VerificationWaiter.new(client: client, sleeper: @sleeper, clock: @clock).wait(target, wait: false)
+        if outcome.not_found
+          @stderr.puts("deployangel: no deployment found for #{target.values.first}")
+          return outcome.exit_code
+        end
+
+        document = outcome.document
+        plan = document["exercise_plan"] || {}
+        unless %w[exercisable waiting_for_activity].include?(plan["status"])
+          @stdout.puts("Nothing to exercise. #{plan["summary"]}".rstrip)
+          return 0
+        end
+
+        exerciser = Exerciser.new(base_url: options[:url], max_requests: options[:max_requests].clamp(1, Exerciser::MAX_REQUESTS),
+          sleeper: @sleeper, requester: @requester)
+        if options[:dry_run]
+          targets, skipped = exerciser.plan(plan)
+          @stdout.puts("Would send #{targets.sum(&:count)} requests:", *targets.map { |t| "  #{exerciser.url_for(t.path)} ×#{t.count}" })
+          @stdout.puts("Skipped:", *skipped.map { |s| "  #{s["key"]} (#{s["reason"]})" }) if skipped.any?
+          return 0
+        end
+
+        result = exerciser.run(plan)
+        @stdout.puts("Sent #{result.sent} requests to #{options[:url]}:",
+          *result.routes.map { |r| "  #{r["key"]} ×#{r["requests"]}: #{r["statuses"].map { |kind, n| "#{n} #{kind}" }.join(", ")}" })
+        @stdout.puts("Skipped:", *result.skipped.map { |s| "  #{s["key"]} (#{s["reason"]})" }) if result.skipped.any?
+        @stdout.puts("Stopped early: #{options[:url]} isn't answering.") if result.unreachable
+        if result.routes.any?
+          client.record_exercise(document.dig("deployment", "id"), routes: result.routes, skipped: result.skipped, ran_at: @clock.call.utc.iso8601)
+          @stdout.puts("Recorded on the release. Wait for the verdict with: deployangel verify --wait")
+        end
+        result.unreachable ? USAGE_ERROR : 0
       end
 
       def exception
