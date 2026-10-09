@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Work scheduled outside the app's own scheduler is watched too.
+  `config.recurring_jobs` declares it by the name it runs under (a job
+  class, `"rake <task>"`, or a `DeployAngel.task` name) with a cron line
+  or Fugit's words, for cron, Heroku Scheduler, or a Kubernetes CronJob.
+- `DeployAngel.task("name") { ... }` records plain code that a scheduler
+  starts as a run of that name, with its duration and whether it raised.
+- Rake tasks a schedule names are recorded with no code change, when the
+  task loads the app (`:environment`).
+- The whenever gem's `config/schedule.rb` is read with whenever's own
+  parser, when whenever is in the bundle: rake tasks and runners that
+  perform a job class are expected on schedule, in the server's zone.
+
 ## 0.1.21 (2026-10-09)
 
 - `deployangel exercise` stops requesting a page after its first 404, 405,

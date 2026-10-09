@@ -210,6 +210,43 @@ end
 Jobs that exist only in Redis, such as ones created in code or in the
 Sidekiq web UI, aren't read.
 
+#### Cron, Heroku Scheduler, and whenever
+
+Work that something outside the app starts on a schedule, such as cron,
+Heroku Scheduler, or a Kubernetes CronJob, is invisible to those files.
+Declare it by the name it runs under, with a cron line or words like
+`"every day at 4am"`, in the server's time zone unless you add one
+(`"0 3 * * * America/New_York"`):
+
+```ruby
+DeployAngel.configure do |config|
+  config.recurring_jobs = {
+    "NightlyInvoiceJob" => "0 3 * * *",            # bin/rails runner "NightlyInvoiceJob.perform_now"
+    "rake invoices:send" => "every day at 4am",    # bin/rails invoices:send
+    "nightly import" => "30 2 * * *"               # DeployAngel.task("nightly import") { ... }
+  }
+end
+```
+
+- **A job class** is recorded wherever it runs, a one-off `rails runner`
+  included.
+- **A rake task** named `"rake <task>"` is recorded with no code change, as
+  long as it loads the app (depends on `:environment`).
+- **Any other code** is recorded when you wrap it, which returns the block's
+  value and re-raises what it raises:
+
+  ```ruby
+  DeployAngel.task("nightly import") { Importer.run }
+  ```
+
+The [whenever](https://github.com/javan/whenever) gem's `config/schedule.rb`
+is read automatically when whenever is in the app's bundle (it's usually in
+the Gemfile already, for deploys): its `rake` jobs, and `runner` jobs that
+perform a job class (`"NightlyInvoiceJob.perform_later"`), are expected on
+the schedule whenever writes to the crontab. Other `runner` code and
+`command` jobs can't be matched to a run; wrap them in `DeployAngel.task`
+and declare them as above.
+
 ## Checkpoints
 
 Errors and latency don't catch work that silently stops happening. Count the

@@ -50,6 +50,57 @@ RSpec.describe DeployAngel::Metadata do
     )
   end
 
+  it "sends work scheduled outside the app from config.recurring_jobs, read in the server's zone" do
+    config.recurring_jobs = { "NightlyInvoiceJob" => "0 3 * * *", "rake invoices:send" => "every day at 4am", "blank" => " " }
+    reader = metadata
+    allow(reader).to receive(:local_time_zone).and_return("America/New_York")
+
+    expect(reader.schedules).to eq([
+      { "key" => "NightlyInvoiceJob", "class" => "NightlyInvoiceJob", "schedule" => "0 3 * * *", "source" => "config",
+        "time_zone" => "America/New_York" },
+      { "key" => "rake invoices:send", "class" => "rake invoices:send", "schedule" => "every day at 4am", "source" => "config",
+        "time_zone" => "America/New_York" }
+    ])
+  end
+
+  describe "the whenever gem's config/schedule.rb" do
+    it "sends rake tasks and job runners as cron lines, the way whenever writes the crontab" do
+      write("config/schedule.rb", <<~SCHEDULE)
+        set :output, "log/cron.log"
+        every 1.day, at: "4:30 am" do
+          rake "invoices:send"
+          runner "NightlyInvoiceJob.perform_now"
+        end
+        every :monday, at: ["2:00 am", "3:00 pm"] do
+          runner "Reports::WeeklyJob.set(queue: :low).perform_later"
+        end
+        every 15.minutes do
+          runner "Cache.warm!"
+          command "/usr/bin/backup"
+        end
+        every :reboot do
+          rake "boot:check"
+        end
+      SCHEDULE
+
+      expect(metadata.schedules.map { |job| job.slice("key", "class", "schedule", "source") }).to eq([
+        { "key" => "rake invoices:send", "class" => "rake invoices:send", "schedule" => "30 4 * * *", "source" => "whenever" },
+        { "key" => "NightlyInvoiceJob", "class" => "NightlyInvoiceJob", "schedule" => "30 4 * * *", "source" => "whenever" },
+        { "key" => "Reports::WeeklyJob (0 2 * * 1)", "class" => "Reports::WeeklyJob", "schedule" => "0 2 * * 1", "source" => "whenever" },
+        { "key" => "Reports::WeeklyJob (0 15 * * 1)", "class" => "Reports::WeeklyJob", "schedule" => "0 15 * * 1", "source" => "whenever" }
+      ])
+    end
+
+    it "leaves the other schedules in place when the file can't be read" do
+      write("config/schedule.rb", "every 1.day do
+  rake 'x'
+")
+      config.recurring_jobs = { "NightlyJob" => "0 3 * * *" }
+
+      expect(metadata.schedules.map { |job| job["key"] }).to eq([ "NightlyJob" ])
+    end
+  end
+
   it "filters sidekiq-scheduler jobs by the environment it was given" do
     stub_const("SidekiqScheduler", Module.new)
     write("config/sidekiq.yml", <<~CONFIG)

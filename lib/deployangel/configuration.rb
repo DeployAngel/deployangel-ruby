@@ -11,7 +11,8 @@ module DeployAngel
 
     attr_accessor :token, :endpoint, :enabled, :environments, :release_version, :revision,
       :flush_interval, :open_timeout, :read_timeout, :max_queued_payloads, :max_routes, :logger,
-      :file_digests, :critical_flows, :ignored_routes, :sidekiq_cron_schedule_file, :exception_messages
+      :file_digests, :critical_flows, :ignored_routes, :sidekiq_cron_schedule_file, :exception_messages,
+      :recurring_jobs
 
     def initialize(env = ENV)
       @token = env["DEPLOYANGEL_TOKEN"]
@@ -36,6 +37,12 @@ module DeployAngel
       # For an app that loads sidekiq-cron's jobs itself (load_from_hash!)
       # from its own file, such as "config/sidekiq_schedule.yml.erb".
       @sidekiq_cron_schedule_file = nil
+      # Work scheduled outside the app's own scheduler (cron, Heroku
+      # Scheduler, a Kubernetes CronJob), by the name it runs under: a job
+      # class, "rake <task>", or a DeployAngel.task name. Each schedule is a
+      # cron line or Fugit's words ("every day at 4am"), optionally ending
+      # in a time zone.
+      @recurring_jobs = {}
     end
 
     # Reports only with a token, and by default in every environment but

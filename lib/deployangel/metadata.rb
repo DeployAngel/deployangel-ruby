@@ -63,7 +63,73 @@ module DeployAngel
     # Declared recurring jobs. Each source is read on its own, so a file that
     # can't be read leaves the others' schedules in place.
     def schedules
-      sidekiq_cron_schedules + sidekiq_scheduler_schedules
+      sidekiq_cron_schedules + sidekiq_scheduler_schedules + whenever_schedules + configured_schedules
+    end
+
+    # config.recurring_jobs: work scheduled outside the app, by the name it
+    # runs under. A schedule without a zone is read in the server's.
+    def configured_schedules
+      Array(@config.recurring_jobs).filter_map do |name, schedule|
+        next if name.to_s.strip.empty? || schedule.to_s.strip.empty?
+
+        { "key" => name.to_s, "class" => name.to_s, "schedule" => schedule.to_s, "source" => "config", "time_zone" => local_time_zone }
+      end
+    rescue StandardError
+      []
+    end
+
+    WHENEVER_FILE = "config/schedule.rb"
+    WHENEVER_JOB = /\A\s*(?:::)?([A-Z]\w*(?:::[A-Z]\w*)*)(?:\.set\(.*?\))?\.(?:perform_now|perform_later|perform_async|perform_inline)\b/m
+
+    # The whenever gem's config/schedule.rb, which it turns into the server's
+    # crontab on deploy. Read with whenever's own parser, so times come out
+    # as cron reads them, in the server's zone. Rake tasks are recorded by
+    # name (Tasks.install_rake); a runner that performs a job class is
+    # matched by that class. Other commands can't be told apart, so they're
+    # left to config.recurring_jobs and DeployAngel.task.
+    def whenever_schedules
+      path = File.join(@root, WHENEVER_FILE)
+      return [] unless File.file?(path) && whenever_loaded?
+
+      list = ::Whenever::JobList.new(file: path)
+      chronic = list.instance_variable_get(:@chronic_options) || {}
+      by_time = (list.instance_variable_get(:@jobs) || {}).values.flat_map(&:to_a)
+      by_time.flat_map do |time, jobs|
+        Array(jobs).flat_map { |job| whenever_entries(time, job, chronic) }
+      end.uniq { |schedule| schedule["key"] }
+    rescue StandardError, ScriptError
+      []
+    end
+
+    def whenever_loaded?
+      require "whenever"
+      true
+    rescue LoadError
+      false
+    end
+
+    def whenever_entries(time, job, chronic)
+      name = whenever_job_name(job) or return []
+      crons = ::Whenever::Output::Cron.enumerate(time).flat_map do |each|
+        ::Whenever::Output::Cron.enumerate(job.at, false).map do |at|
+          ::Whenever::Output::Cron.new(each, nil, at, chronic_options: chronic).time_in_cron_syntax.to_s
+        end
+      end.uniq.reject { |cron| cron.empty? || cron == "@reboot" }
+      crons.map do |cron|
+        { "key" => crons.one? ? name : "#{name} (#{cron})", "class" => name, "schedule" => cron, "source" => "whenever",
+          "time_zone" => local_time_zone }
+      end
+    end
+
+    def whenever_job_name(job)
+      template = job.instance_variable_get(:@template).to_s
+      task = job.instance_variable_get(:@options)&.dig(:task).to_s.strip
+      if template.match?(/\brake :task\b/)
+        rake = task.split.first.to_s
+        "#{Tasks::RAKE_PREFIX}#{rake}" unless rake.empty?
+      elsif template.include?(":runner_command")
+        task[WHENEVER_JOB, 1]
+      end
     end
 
     # sidekiq-cron jobs from its schedule file (config/schedule.yml unless

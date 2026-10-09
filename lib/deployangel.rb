@@ -61,6 +61,15 @@ module DeployAngel
       agent&.record_exception(exception, **options)
     end
 
+    # Records a block as a run of scheduled work, for code that cron or a
+    # scheduler outside the app starts and that isn't a job:
+    #   DeployAngel.task("invoices:send") { Invoice.send_due }
+    # It returns the block's value and re-raises what it raises. Declare the
+    # schedule in config.recurring_jobs so a missed run is noticed.
+    def task(name, &)
+      Tasks.run(name, &)
+    end
+
     CHECKPOINT_NAME = /\A[a-z0-9][a-z0-9_.:-]{0,99}\z/i
 
     # Counts a business event, such as DeployAngel.checkpoint("order.fulfilled").
@@ -116,6 +125,7 @@ require_relative "deployangel/rack/http"
 require_relative "deployangel/rails/http"
 require_relative "deployangel/rails/active_job"
 require_relative "deployangel/rails/error_subscriber"
+require_relative "deployangel/tasks"
 require_relative "deployangel/metadata"
 require_relative "deployangel/rails/metadata"
 require_relative "deployangel/sidekiq"
