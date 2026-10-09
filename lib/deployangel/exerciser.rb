@@ -16,6 +16,9 @@ module DeployAngel
     TIMEOUT = 10
     # Stop when the app isn't answering, rather than send the rest into it.
     MAX_CONSECUTIVE_ERRORS = 5
+    # A route table can list pages an app doesn't serve, like the edit page
+    # of a resource that has none. One answer like this is enough to know.
+    NOT_SERVED = [ 404, 405, 410 ].freeze
     # Rails' :id and *path, Django's <int:pk>, FastAPI's {id}.
     PARAMETER = /\/[:*{<]/
 
@@ -51,27 +54,34 @@ module DeployAngel
       [ targets, skipped ]
     end
 
+    # A route whose first request says it isn't served gets no more; its
+    # share goes to the routes that answered.
     def run(exercise_plan)
       targets, skipped = plan(exercise_plan)
-      routes = []
-      errors_in_a_row = 0
-      sent = 0
+      @statuses = Hash.new { |hash, key| hash[key] = Hash.new(0) }
+      @sent = 0
+      @errors_in_a_row = 0
+      leftover = 0
+      answered = []
       targets.each do |target|
-        statuses = Hash.new(0)
-        target.count.times do
-          break if errors_in_a_row >= MAX_CONSECUTIVE_ERRORS
+        target.count.times do |i|
+          break if unreachable?
 
-          @sleeper.call(INTERVAL) if sent.positive?
-          status = @requester.call(url_for(target.path))
-          sent += 1
-          kind = status ? "#{status / 100}xx" : "error"
-          statuses[kind] += 1
-          errors_in_a_row = kind == "error" ? errors_in_a_row + 1 : 0
+          status = send_request(target)
+          if i.zero? && NOT_SERVED.include?(status)
+            leftover += target.count - 1
+            break
+          end
         end
-        requests = statuses.values.sum
-        routes << { "key" => target.key, "requests" => requests, "statuses" => statuses.to_h } if requests.positive?
+        answered << target if @statuses[target.key].keys.intersect?(%w[2xx 3xx])
       end
-      Result.new(routes: routes, skipped: skipped, sent: sent, unreachable: errors_in_a_row >= MAX_CONSECUTIVE_ERRORS)
+      leftover.times { |i| send_request(answered[i % answered.size]) unless unreachable? } if answered.any?
+
+      routes = targets.filter_map do |target|
+        statuses = @statuses.fetch(target.key, nil) or next
+        { "key" => target.key, "requests" => statuses.values.sum, "statuses" => statuses.to_h }
+      end
+      Result.new(routes: routes, skipped: skipped, sent: @sent, unreachable: unreachable?)
     end
 
     def url_for(path)
@@ -82,6 +92,20 @@ module DeployAngel
     end
 
     private
+      def send_request(target)
+        @sleeper.call(INTERVAL) if @sent.positive?
+        status = @requester.call(url_for(target.path))
+        @sent += 1
+        kind = status ? "#{status / 100}xx" : "error"
+        @statuses[target.key][kind] += 1
+        @errors_in_a_row = kind == "error" ? @errors_in_a_row + 1 : 0
+        status
+      end
+
+      def unreachable?
+        @errors_in_a_row >= MAX_CONSECUTIVE_ERRORS
+      end
+
       # Requests the release is short of overall, spread across the routes,
       # or sent to the home page when the plan names no route to send them to.
       def spread_shortfall(targets, requests)

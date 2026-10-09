@@ -471,8 +471,9 @@ path parameters, spreading any request shortfall across them (at most 200
 requests, about 5 a second, as `DeployAngel-Exercise`), then records what it
 sent on the release, where the page lists it under "Exercised from your
 side". It skips and names routes that change data or need a path
-parameter. A "CLI & coding agents" token can run it. `--dry-run` shows what
-it would send.
+parameter, and stops requesting a page after its first 404, sending its
+share to the pages that answered. A "CLI & coding agents" token can run
+it. `--dry-run` shows what it would send.
 
 ### Suggested instructions for your coding agent
 

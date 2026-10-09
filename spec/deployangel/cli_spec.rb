@@ -66,6 +66,20 @@ RSpec.describe DeployAngel::CLI do
         "POST /password_resets (changes data)", "Recorded on the release.")
     end
 
+    it "stops requesting a page the app doesn't serve, and sends its share to the pages that answered" do
+      client = FakeClient.new(documents: [ document ])
+      requester = ->(url) { sent << url && (url.end_with?("/about") ? 404 : 200) }
+      described_class.new([ "exercise", "--url=https://shop.example.com" ], env: {}, stdout: stdout, stderr: stderr, client: client,
+        sleeper: sleeper, clock: clock, git_head: "81ac27d0000", requester: requester).run
+
+      expect(sent.tally).to eq("https://shop.example.com/products" => 17, "https://shop.example.com/about" => 1)
+      routes = client.calls.find { |call| call.first == :exercise }[2][:routes]
+      expect(routes).to eq([
+        { "key" => "GET /products", "requests" => 17, "statuses" => { "2xx" => 17 } },
+        { "key" => "GET /about", "requests" => 1, "statuses" => { "4xx" => 1 } }
+      ])
+    end
+
     it "sends nothing on a dry run, and caps the requests it sends" do
       client = FakeClient.new(documents: [ document ])
       exercise("--url=https://shop.example.com", "--dry-run", "--max-requests=5", client: client)
