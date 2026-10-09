@@ -413,6 +413,22 @@ choose with `--format=text|json`. Exit codes:
 
 ### MCP server
 
+To set up Claude Code, Cursor, and Codex for a project in one step, run this
+in the project:
+
+```bash
+bundle exec deployangel install agents
+```
+
+It adds the MCP server to `.mcp.json` (Claude Code), `.cursor/mcp.json`
+(Cursor), and `.codex/config.toml` (Codex, which reads it only in projects you
+trust), and the instructions below to `AGENTS.md`, with a `CLAUDE.md` that
+imports it. It never replaces an existing entry, and running it again updates
+only its own instructions. Commit the files; the token stays in your
+environment.
+
+Or add the server yourself:
+
 ```bash
 claude mcp add deployangel -- bundle exec deployangel mcp    # Claude Code
 ```
@@ -450,7 +466,8 @@ so its plan lists nothing.
 
 ### Suggested instructions for your coding agent
 
-Add this to your `CLAUDE.md` or `AGENTS.md`:
+`deployangel install agents` adds instructions like these. To add them
+yourself, put this in your `CLAUDE.md` or `AGENTS.md`:
 
 ```markdown
 ## Production verification

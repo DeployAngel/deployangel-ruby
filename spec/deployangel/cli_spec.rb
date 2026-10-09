@@ -263,6 +263,75 @@ RSpec.describe DeployAngel::CLI do
     end
   end
 
+  describe "install agents" do
+    around { |example| Dir.mktmpdir { |root| @root = root; example.run } }
+
+    def install = described_class.new(%w[install agents], stdout: stdout, stderr: stderr, root: @root).run
+    def read(path) = File.read(File.join(@root, path))
+    def write(path, content) = FileUtils.mkdir_p(File.dirname(File.join(@root, path))) && File.write(File.join(@root, path), content)
+
+    it "sets up Claude Code, Cursor, and Codex in a project that has none of their files" do
+      expect(install).to eq(0)
+
+      server = { "command" => "bundle", "args" => %w[exec deployangel mcp] }
+      expect(JSON.parse(read(".mcp.json"))).to eq("mcpServers" => { "deployangel" => server })
+      expect(JSON.parse(read(".cursor/mcp.json"))).to eq("mcpServers" => { "deployangel" => server })
+      expect(read(".codex/config.toml")).to eq(<<~TOML)
+        [mcp_servers.deployangel]
+        command = "bundle"
+        args = ["exec", "deployangel", "mcp"]
+        env_vars = ["DEPLOYANGEL_API_TOKEN", "DEPLOYANGEL_URL"]
+      TOML
+      expect(read("AGENTS.md")).to eq(described_class::AGENT_INSTRUCTIONS)
+      expect(read("AGENTS.md")).to include("bundle exec deployangel verify --commit=<sha> --wait --until=initial")
+      expect(read("CLAUDE.md")).to eq("@AGENTS.md\n")
+      expect(stdout.string).to include("Created .mcp.json", "Created .cursor/mcp.json", "Created .codex/config.toml",
+        "Created AGENTS.md", "Created CLAUDE.md", "DEPLOYANGEL_API_TOKEN", "Never put it in these files")
+    end
+
+    it "adds to existing files without disturbing them, and changes nothing when run again" do
+      write(".mcp.json", JSON.generate("mcpServers" => { "github" => { "command" => "gh-mcp" } }))
+      write(".codex/config.toml", "model = \"gpt-5\"\n")
+      write("AGENTS.md", "# Project\n\nRun the tests first.\n")
+      write("CLAUDE.md", "# Claude\n")
+
+      install
+      expect(JSON.parse(read(".mcp.json"))["mcpServers"].keys).to eq(%w[github deployangel])
+      expect(read(".codex/config.toml")).to start_with("model = \"gpt-5\"\n\n[mcp_servers.deployangel]\n")
+      expect(read("AGENTS.md")).to eq("# Project\n\nRun the tests first.\n\n#{described_class::AGENT_INSTRUCTIONS}")
+      expect(read("CLAUDE.md")).to eq("# Claude\n\n#{described_class::AGENT_INSTRUCTIONS}")
+
+      files = %w[.mcp.json .cursor/mcp.json .codex/config.toml AGENTS.md CLAUDE.md].to_h { |path| [ path, read(path) ] }
+      stdout.truncate(0)
+      install
+      expect(files.to_h { |path, _| [ path, read(path) ] }).to eq(files)
+      expect(stdout.string).to include("already has a deployangel MCP server", "already has DeployAngel's instructions")
+    end
+
+    it "replaces an older version of its instructions, and leaves a CLAUDE.md that imports AGENTS.md alone" do
+      write("AGENTS.md", "# Project\n\n#{described_class::AGENTS_START}\nold advice\n#{described_class::AGENTS_END}\n\n## Style\n")
+      write("CLAUDE.md", "@AGENTS.md\n")
+
+      install
+      expect(read("AGENTS.md")).to eq("# Project\n\n#{described_class::AGENT_INSTRUCTIONS}\n## Style\n")
+      expect(read("CLAUDE.md")).to eq("@AGENTS.md\n")
+      expect(stdout.string).to include("Updated DeployAngel's instructions in AGENTS.md.")
+    end
+
+    it "names the targets when given an unknown one" do
+      expect(described_class.new(%w[install heroku], stdout: stdout, stderr: stderr, root: @root).run).to eq(5)
+      expect(stderr.string).to include("deployangel install kamal, docker, or agents")
+    end
+
+    it "leaves a config file it can't read for you to edit" do
+      write(".mcp.json", "{ not json")
+
+      expect(install).to eq(0)
+      expect(read(".mcp.json")).to eq("{ not json")
+      expect(stdout.string).to include("Couldn't read .mcp.json, so it's unchanged.", %(command "bundle", args ["exec","deployangel","mcp"]))
+    end
+  end
+
   describe "install docker" do
     around { |example| Dir.mktmpdir { |root| @root = root; example.run } }
 

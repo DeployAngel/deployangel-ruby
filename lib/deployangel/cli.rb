@@ -33,8 +33,9 @@ module DeployAngel
         exception  Details for a fingerprint     deployangel exception FINGERPRINT
         check      Report a smoke test result    --name=NAME --status=pass|fail [--covers=a,b]
                                                  [--commit=SHA | --deployment=ID] [--details-url=URL]
-        install    Add a Kamal deploy hook, or    deployangel install kamal
-                   bake the commit into an image  deployangel install docker
+        install    Add a Kamal deploy hook,       deployangel install kamal
+                   bake the commit into an image, deployangel install docker
+                   or set up coding agents        deployangel install agents
         mcp        Run the MCP server over stdio (for coding agents)
 
       With no target, verify, plan, and check use the current git HEAD commit.
@@ -69,6 +70,46 @@ module DeployAngel
           build-args: GIT_SHA=${{ github.sha }}
 
       Kamal apps don't need this: DeployAngel reads Kamal's KAMAL_VERSION.
+    HELP
+
+    # The block `deployangel install agents` keeps in AGENTS.md (and CLAUDE.md
+    # when it doesn't import AGENTS.md), replaced whole on each run.
+    AGENTS_START = "<!-- deployangel:start -->"
+    AGENTS_END = "<!-- deployangel:end -->"
+    AGENT_INSTRUCTIONS = <<~MARKDOWN
+      #{AGENTS_START}
+      ## Production verification (DeployAngel)
+
+      After deploying, or pushing a commit that deploys, wait for DeployAngel's
+      verdict: call the `wait_for_verification` MCP tool with the commit and
+      `until: "initial"`, calling again while it's in progress, or run
+      `bundle exec deployangel verify --commit=<sha> --wait --until=initial`.
+
+      - Exit 0 / verified: the release is cleared. Report the clearance line and
+        anything DeployAngel is still watching, then move on.
+      - Exit 6: no problems so far, but NOT cleared. Report "no problems so far, not
+        yet cleared" and the expected clearance time. DeployAngel keeps verifying and
+        alerts on failure.
+      - Exit 7: warnings at the initial check. Report them and review the findings.
+        The release is NOT cleared.
+      - Exit 2 / inconclusive: the release is NOT verified. Do not claim success.
+      - Exit 1 / failed: read the findings and exceptions (`get_exception`),
+        investigate the likely cause, and propose a fix. Do not roll back or change
+        production without explicit approval.
+      - Exit 3: still verifying; run the command again.
+      - Not cleared yet: call `get_exercise_plan` (or `bundle exec deployangel plan`).
+        If its status is "exercisable" or "waiting_for_activity", say what it lists
+        and offer to exercise it: read-only routes freely, routes marked mutating
+        only with a test account or after asking. If the status is "warm_up",
+        nothing run can clear it.
+      #{AGENTS_END}
+    MARKDOWN
+
+    AGENTS_TOKEN_HELP = <<~HELP.chomp
+      The MCP server and CLI need DEPLOYANGEL_API_TOKEN, a "CLI & coding agents" token
+      from the app's Settings, in the environment your agent runs in (for example in
+      an .envrc with direnv). Never put it in these files: they're meant to be committed.
+      Codex reads .codex/config.toml only in projects you've marked as trusted.
     HELP
 
     DOCKERFILE_LINES = <<~DOCKERFILE
@@ -230,7 +271,8 @@ module DeployAngel
         case (target = @argv.shift)
         when "kamal" then install_kamal
         when "docker" then install_docker
-        else usage_error("install needs a target: deployangel install kamal, or deployangel install docker")
+        when "agents" then install_agents
+        else usage_error("install needs a target: deployangel install kamal, docker, or agents")
         end
       end
 
@@ -254,6 +296,93 @@ module DeployAngel
         @stdout.puts("Created #{relative}. Each `kamal deploy` now registers its release with DeployAngel.",
           "Set DEPLOYANGEL_API_TOKEN (a \"CI deploys\" token) wherever you run kamal deploy.")
         0
+      end
+
+      # Sets up Claude Code, Cursor, and Codex in this project: the MCP server
+      # in each one's project config, and instructions to wait for a verdict
+      # after deploying. Never overwrites what's there: an existing entry is
+      # kept, and a file it can't read is left for you to edit.
+      def install_agents
+        command = %w[bundle exec deployangel mcp]
+        lines = [
+          install_json_mcp(".mcp.json", command, "Claude Code"),
+          install_json_mcp(File.join(".cursor", "mcp.json"), command, "Cursor"),
+          install_codex_mcp(command),
+          *install_agent_instructions
+        ]
+        @stdout.puts(*lines, "", AGENTS_TOKEN_HELP)
+        0
+      end
+
+      def install_json_mcp(relative, command, agent)
+        path = File.join(@root, relative)
+        config = File.exist?(path) ? JSON.parse(File.read(path)) : {}
+        raise JSON::ParserError, "not a JSON object" unless config.is_a?(Hash)
+
+        servers = (config["mcpServers"] ||= {})
+        return "#{relative} already has a deployangel MCP server (#{agent})." if servers.key?("deployangel")
+
+        created = !File.exist?(path)
+        servers["deployangel"] = { "command" => command.first, "args" => command.drop(1) }
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "#{JSON.pretty_generate(config)}\n")
+        "#{created ? "Created" : "Updated"} #{relative}: the DeployAngel MCP server for #{agent}."
+      rescue JSON::ParserError
+        "Couldn't read #{relative}, so it's unchanged. Add a \"deployangel\" server to its mcpServers: " \
+          "command \"#{command.first}\", args #{command.drop(1).to_json}."
+      end
+
+      def install_codex_mcp(command)
+        relative = File.join(".codex", "config.toml")
+        path = File.join(@root, relative)
+        existing = File.exist?(path) ? File.read(path) : nil
+        return "#{relative} already has a deployangel MCP server (Codex)." if existing&.include?("[mcp_servers.deployangel]")
+
+        table = <<~TOML
+          [mcp_servers.deployangel]
+          command = #{command.first.to_json}
+          args = #{command.drop(1).to_json.gsub(",", ", ")}
+          env_vars = ["DEPLOYANGEL_API_TOKEN", "DEPLOYANGEL_URL"]
+        TOML
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, existing ? "#{existing.sub(/\n*\z/, "\n")}\n#{table}" : table)
+        "#{existing ? "Updated" : "Created"} #{relative}: the DeployAngel MCP server for Codex."
+      end
+
+      # AGENTS.md serves Codex and Cursor. Claude Code reads CLAUDE.md, so it
+      # gets the block too, unless it already imports AGENTS.md; a project
+      # without one gets a CLAUDE.md that does.
+      def install_agent_instructions
+        lines = [ upsert_instructions("AGENTS.md") ]
+        claude = File.join(@root, "CLAUDE.md")
+        if !File.exist?(claude)
+          File.write(claude, "@AGENTS.md\n")
+          lines << "Created CLAUDE.md, which imports AGENTS.md for Claude Code."
+        elsif !File.read(claude).match?(/^@AGENTS\.md\s*$/)
+          lines << upsert_instructions("CLAUDE.md")
+        end
+        lines
+      end
+
+      def upsert_instructions(relative)
+        path = File.join(@root, relative)
+        unless File.exist?(path)
+          File.write(path, AGENT_INSTRUCTIONS)
+          return "Created #{relative} with instructions to wait for DeployAngel's verdict after deploying."
+        end
+
+        content = File.read(path)
+        block = /#{Regexp.escape(AGENTS_START)}.*?#{Regexp.escape(AGENTS_END)}\n?/m
+        if content.match?(block)
+          updated = content.sub(block, AGENT_INSTRUCTIONS)
+          return "#{relative} already has DeployAngel's instructions." if updated == content
+
+          File.write(path, updated)
+          "Updated DeployAngel's instructions in #{relative}."
+        else
+          File.write(path, "#{content.sub(/\n*\z/, "\n")}\n#{AGENT_INSTRUCTIONS}")
+          "Added instructions to wait for DeployAngel's verdict after deploying to #{relative}."
+        end
       end
 
       # Adds DEPLOYANGEL_REVISION, from a GIT_SHA build arg, to the Dockerfile.
