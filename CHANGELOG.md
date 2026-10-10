@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- GoodJob's cron (`config.good_job.cron`, or `GOOD_JOB_CRON`) is read from
+  the processes that run it, so its jobs are expected on schedule. Entries
+  whose schedule or class is a lambda, or that are off by default, are
+  left out; schedules without a zone are read in the server's.
+
 ## 0.1.22 (2026-10-09)
 
 - Work scheduled outside the app's own scheduler is watched too.

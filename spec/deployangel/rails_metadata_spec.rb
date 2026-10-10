@@ -79,6 +79,50 @@ RSpec.describe DeployAngel::Rails::Metadata do
     expect(metadata.schedules.sole).to include("time_zone" => "Etc/UTC")
   end
 
+  describe "GoodJob cron" do
+    let(:cron) do
+      { nightly_invoices: { cron: "0 3 * * *", class: "NightlyInvoiceJob" },
+        "frequent" => { "cron" => "every 15 minutes", "class" => "FrequentJob", "args" => [ 1 ] },
+        constant: { cron: "30 6 * * * America/Chicago", class: Class.new { def self.name = "ReportJob" } },
+        dynamic: { cron: ->(last_ran) { last_ran + 1.hour }, class: "DynamicJob" },
+        chosen: { cron: "0 * * * *", class: -> { "ChosenJob" } },
+        off: { cron: "0 4 * * *", class: "OffJob", enabled_by_default: false } }
+    end
+
+    def good_job(enable_cron: true, cron: self.cron)
+      configuration = Struct.new(:enable_cron?, :cron).new(enable_cron, cron)
+      stub_const("GoodJob", Module.new { define_singleton_method(:configuration) { configuration } })
+      stub_const("EtOrbi", Module.new { def self.determine_local_tzone = Struct.new(:name).new("America/New_York") })
+    end
+
+    it "reads the cron in a process that runs it, in the server's zone, leaving out lambdas and entries off by default" do
+      good_job
+
+      expect(metadata.schedules).to eq([
+        { "key" => "nightly_invoices", "class" => "NightlyInvoiceJob", "schedule" => "0 3 * * *", "source" => "good_job",
+          "time_zone" => "America/New_York" },
+        { "key" => "frequent", "class" => "FrequentJob", "schedule" => "every 15 minutes", "source" => "good_job",
+          "time_zone" => "America/New_York" },
+        { "key" => "constant", "class" => "ReportJob", "schedule" => "30 6 * * * America/Chicago", "source" => "good_job",
+          "time_zone" => "America/New_York" }
+      ])
+    end
+
+    it "reads nothing in a process with cron off, since another process runs it" do
+      good_job(enable_cron: false)
+
+      expect(metadata.schedules).to eq([])
+    end
+
+    it "leaves the other schedules in place when GoodJob's configuration can't be read" do
+      stub_const("GoodJob", Module.new { def self.configuration = raise("boom") })
+      FileUtils.mkdir_p(File.join(@root, "config"))
+      File.write(File.join(@root, "config/recurring.yml"), "nightly:\n  class: NightlyInvoiceJob\n  schedule: at 3am every day\n")
+
+      expect(metadata.schedules.sole).to include("key" => "nightly", "source" => "solid_queue")
+    end
+  end
+
   describe "Sidekiq schedules" do
     let(:local_zone) { Module.new { def self.determine_local_tzone = Struct.new(:name).new("America/New_York") } }
 

@@ -98,7 +98,8 @@ the dashboard says so.
   as it is. If your app's messages might hold personal or health data, [turn
   messages off](#exception-messages).
 - Once per process: the route table, job classes, recurring schedules
-  declared for Solid Queue, sidekiq-cron, or sidekiq-scheduler, critical
+  declared for Solid Queue, GoodJob, sidekiq-cron, sidekiq-scheduler, or
+  whenever, critical
   flows, and file digests (relative paths and hashes, never file contents) so
   DeployAngel can tell which routes changed in a release.
   Disable digests with `DEPLOYANGEL_FILE_DIGESTS=false`.
@@ -209,6 +210,13 @@ end
 
 Jobs that exist only in Redis, such as ones created in code or in the
 Sidekiq web UI, aren't read.
+
+GoodJob's cron (`config.good_job.cron`, or `GOOD_JOB_CRON`) is read from the
+processes that run it, the ones with cron enabled. Schedules without a zone
+are read in the server's, as GoodJob reads them. An entry whose `cron:` or
+`class:` is a lambda, or that's `enabled_by_default: false`, isn't expected.
+The agent doesn't see entries turned off in GoodJob's dashboard, so one you
+switch off there will look missed after the next deploy.
 
 #### Cron, Heroku Scheduler, and whenever
 

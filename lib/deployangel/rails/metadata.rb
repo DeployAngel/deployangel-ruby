@@ -3,7 +3,7 @@
 module DeployAngel
   module Rails
     # The Rails adapter: the route table from the router, job classes from
-    # Active Job, and Solid Queue's recurring tasks. The schedule files
+    # Active Job, and Solid Queue's and GoodJob's recurring tasks. The schedule files
     # sidekiq-cron and sidekiq-scheduler read, and the file digests, are
     # gathered in DeployAngel::Metadata.
     class Metadata < ::DeployAngel::Metadata
@@ -44,10 +44,10 @@ module DeployAngel
         []
       end
 
-      # Solid Queue's schedule is Rails' own; the rest are read the same way
-      # on every framework.
+      # Solid Queue's and GoodJob's schedules live in the Rails app; the rest
+      # are read the same way on every framework.
       def schedules
-        solid_queue_schedules + super
+        solid_queue_schedules + good_job_schedules + super
       end
 
       # Solid Queue recurring tasks for the current environment.
@@ -64,6 +64,33 @@ module DeployAngel
             "time_zone" => scheduler_time_zone }
           schedule["runs_as"] = command_job_class if task["class"].nil? && task["command"]
           schedule
+        end
+      rescue StandardError
+        []
+      end
+
+      # GoodJob's cron, from a process that runs it. GoodJob turns cron on
+      # per process (often only the worker's, with GOOD_JOB_ENABLE_CRON), and
+      # its CLI applies --enable-cron after boot, before metadata is first
+      # sent. A schedule without a zone is read in the server's, as Fugit
+      # reads it. A schedule or class given as a lambda can't be known
+      # without running app code, so it's left out.
+      def good_job_schedules
+        return [] unless defined?(::GoodJob) && ::GoodJob.respond_to?(:configuration)
+
+        configuration = ::GoodJob.configuration
+        return [] unless configuration.enable_cron?
+
+        configuration.cron.filter_map do |key, entry|
+          next unless entry.is_a?(Hash)
+
+          entry = entry.transform_keys(&:to_sym)
+          cron, job_class = entry.values_at(:cron, :class)
+          job_class = job_class.name if job_class.is_a?(Module)
+          next if entry[:enabled_by_default] == false
+          next unless cron.is_a?(String) && !cron.strip.empty? && job_class.is_a?(String) && !job_class.empty?
+
+          { "key" => key.to_s, "class" => job_class, "schedule" => cron, "source" => "good_job", "time_zone" => local_time_zone }
         end
       rescue StandardError
         []
