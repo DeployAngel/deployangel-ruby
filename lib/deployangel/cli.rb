@@ -91,7 +91,8 @@ module DeployAngel
       `until: "initial"`, calling again while it's in progress, or run
       `bundle exec deployangel verify --commit=<sha> --wait --until=initial`.
 
-      - Exit 0 / verified: the release is cleared. Report the clearance line and
+      - Exit 0 / verified: the release is cleared. Report the clearance line, what
+        it says it doesn't cover ("Not assessed", "Not run since the deploy"), and
         anything DeployAngel is still watching, then move on.
       - Exit 6: no problems so far, but NOT cleared. Report "no problems so far, not
         yet cleared" and the expected clearance time. DeployAngel keeps verifying and

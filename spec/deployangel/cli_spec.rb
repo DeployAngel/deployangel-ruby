@@ -22,6 +22,18 @@ RSpec.describe DeployAngel::CLI do
     end
   end
 
+  it "prints what a clearance doesn't cover right under it, in text and in the job summary" do
+    document = verdict_document(state: "closed", verdict: "verified")
+    document["clearance"]["scope"] = { "lines" => [ "Not assessed: HTTP p95 latency (needs 200 requests; had 140)",
+                                                    "Not run since the deploy: critical flow sign_in" ] }
+    summary = File.join(Dir.mktmpdir, "summary.md")
+
+    expect(run("verify", "--format=text", client: FakeClient.new(documents: [ document ]), env: { "GITHUB_STEP_SUMMARY" => summary })).to eq(0)
+    expect(stdout.string.lines.map(&:chomp).first(4)).to eq([ "v184 verified", "State: closed · Verdict: verified · Confidence: high · Coverage: 100%",
+      "Not assessed: HTTP p95 latency (needs 200 requests; had 140)", "Not run since the deploy: critical flow sign_in" ])
+    expect(File.read(summary)).to include("Not run since the deploy: critical flow sign_in")
+  end
+
   it "defaults to the git HEAD commit" do
     client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: "verified") ])
     run("verify", client: client)

@@ -70,7 +70,9 @@ module DeployAngel
 
       def notes(document)
         v = document["verification"] || {}
-        notes = []
+        # What a clearance doesn't cover, right under it (servers from
+        # 2026-10-10 send it).
+        notes = Array(document.dig("clearance", "scope", "lines"))
         if (check = v["initial_check"]) && v["verdict"].nil?
           notes << "Initial check: #{check["result"].tr("_", " ")}. Not cleared yet."
         end
