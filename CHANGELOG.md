@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.23 (2026-10-09)
 
 - GoodJob's cron (`config.good_job.cron`, or `GOOD_JOB_CRON`) is read from
   the processes that run it, so its jobs are expected on schedule. Entries
