@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.24 (2026-10-10)
 
 - `deployangel doctor` checks the setup: the agent in the bundle, the
   schedules in this checkout's files, and how production will know the
