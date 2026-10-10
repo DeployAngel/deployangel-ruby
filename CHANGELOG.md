@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- `deployangel doctor` checks the setup: the agent in the bundle, the
+  schedules in this checkout's files, and how production will know the
+  release; then, with a token, what DeployAngel has seen (processes
+  reporting and their releases, what the agent reported, and setup
+  problems with fixes). Only errors fail it. Run where the app runs, it
+  uses the agent's `DEPLOYANGEL_TOKEN` and shows the release that process
+  reports. Needs a DeployAngel server with `GET /api/v1/setup`.
+
 ## 0.1.23 (2026-10-09)
 
 - GoodJob's cron (`config.good_job.cron`, or `GOOD_JOB_CRON`) is read from

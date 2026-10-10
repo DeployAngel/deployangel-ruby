@@ -12,13 +12,14 @@ require_relative "ci_environment"
 require_relative "verification_waiter"
 require_relative "cli/formatter"
 require_relative "exerciser"
+require_relative "doctor"
 
 module DeployAngel
   # `deployangel` command for developers, CI, and coding agents.
   # Runs without booting Rails.
   class CLI
     USAGE_ERROR = 5
-    COMMANDS = %w[release verify status plan exercise exception check install mcp version help].freeze
+    COMMANDS = %w[release verify status plan exercise exception check install doctor mcp version help].freeze
 
     HELP = <<~TEXT
       Usage: deployangel <command> [options]
@@ -39,6 +40,8 @@ module DeployAngel
         install    Add a Kamal deploy hook,       deployangel install kamal
                    bake the commit into an image, deployangel install docker
                    or set up coding agents        deployangel install agents
+        doctor     Check the setup: this checkout  [--format=text|json]
+                   and what DeployAngel has seen
         mcp        Run the MCP server over stdio (for coding agents)
 
       With no target, verify, plan, and check use the current git HEAD commit.
@@ -148,6 +151,7 @@ module DeployAngel
       when "exception" then exception
       when "check" then check
       when "install" then install
+      when "doctor" then doctor
       when "mcp" then mcp
       when "version", "--version", "-v" then @stdout.puts(DeployAngel::VERSION) || 0
       when nil, "help", "--help", "-h" then @stdout.puts(HELP) || 0
@@ -321,6 +325,36 @@ module DeployAngel
           covers: options[:covers], details_url: options[:details_url])
         @stdout.puts("Recorded #{options[:status]} check \"#{options[:name]}\" for deployment #{result["deployment_id"]}")
         0
+      end
+
+      # What this checkout will report and what DeployAngel has seen of the
+      # app. Warnings are advice, so only errors (a rejected token, an
+      # unreachable server, no agent in the bundle) fail it.
+      def doctor
+        format = parse(format: nil) { |o, opts| o.on("--format=FORMAT", %w[text json]) { |v| opts[:format] = v } }[:format]
+        doctor = Doctor.new(root: @root, client: doctor_client, env: @env)
+        output(doctor.to_h, format) { doctor_text(doctor.checks) }
+        doctor.failed? ? USAGE_ERROR : 0
+      end
+
+      DOCTOR_MARKS = { ok: "✓", warn: "!", error: "✗", info: "·" }.freeze
+
+      def doctor_text(checks)
+        lines = [ "DeployAngel doctor" ]
+        checks.each do |check|
+          lines << "  #{DOCTOR_MARKS.fetch(check.status)} #{check.message}"
+          lines << "      #{check.fix}" if check.fix
+        end
+        lines.join("\n")
+      end
+
+      # Either token works: the setup endpoint answers any of the app's. The
+      # agent's own token is for running it where the app runs.
+      def doctor_client
+        return @client if @client
+
+        token = [ @env["DEPLOYANGEL_API_TOKEN"], @env["DEPLOYANGEL_TOKEN"] ].find { |value| !value.to_s.empty? } or return
+        Client.new(token: token, endpoint: @env["DEPLOYANGEL_URL"] || Configuration::DEFAULT_ENDPOINT)
       end
 
       def install

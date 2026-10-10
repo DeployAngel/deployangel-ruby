@@ -441,7 +441,19 @@ bundle exec deployangel exercise --url=https://example.com  # send the plan's re
 bundle exec deployangel release --commit=$SHA          # register a deploy (manual or CI)
 bundle exec deployangel check --name="smoke: signup" --status=pass --covers=registration
 bundle exec deployangel exception <fingerprint>
+bundle exec deployangel doctor                         # check the setup
 ```
+
+`deployangel doctor` checks this checkout (the agent in the bundle, the
+schedules in its files, how production will know the release) and, with a
+token, what DeployAngel has seen of the app: which processes report and the
+release each runs, the routes, job classes, and scheduled jobs the agent
+reported, and setup problems with what to do about each. Only errors (a
+rejected token, an unreachable server, no agent in the bundle) exit 5;
+warnings exit 0, so it's safe in CI. It reads `DEPLOYANGEL_API_TOKEN`, or
+`DEPLOYANGEL_TOKEN` where the app runs, so
+`heroku run bundle exec deployangel doctor` also shows the release that
+process reports.
 
 Output is text on a terminal and JSON (the verdict document) when piped, or
 choose with `--format=text|json`. Exit codes:

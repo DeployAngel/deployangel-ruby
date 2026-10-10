@@ -41,6 +41,15 @@ class FakeClient
     { "id" => 1, "deployment_id" => deployment_id }
   end
 
+  attr_writer :setup_document
+
+  def setup
+    @calls << [ :setup ]
+    raise @setup_document if @setup_document.is_a?(Exception)
+
+    @setup_document || raise(DeployAngel::Client::NotFound, "not found")
+  end
+
   def exception(fingerprint) = { "fingerprint" => fingerprint, "exception_class" => "NoMethodError", "backtrace" => [] }
   def late_regressions(**) = []
 end

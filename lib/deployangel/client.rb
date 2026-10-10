@@ -31,6 +31,7 @@ module DeployAngel
     end
 
     def token_info = get("/api/v1/token")
+    def setup = get("/api/v1/setup")
     def latest_deployment = get("/api/v1/deployments/latest")
     def deployments(**filters) = get("/api/v1/deployments", filters.compact)["deployments"]
     def exception(fingerprint) = get("/api/v1/exceptions/#{URI.encode_www_form_component(fingerprint)}")
