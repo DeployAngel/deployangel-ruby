@@ -8,6 +8,7 @@ require "optparse"
 require_relative "version"
 require_relative "configuration"
 require_relative "client"
+require_relative "credentials"
 require_relative "ci_environment"
 require_relative "verification_waiter"
 require_relative "cli/formatter"
@@ -19,7 +20,7 @@ module DeployAngel
   # Runs without booting Rails.
   class CLI
     USAGE_ERROR = 5
-    COMMANDS = %w[release verify status plan exercise exception check install doctor mcp version help].freeze
+    COMMANDS = %w[release verify status plan exercise exception check install doctor setup token mcp version help].freeze
 
     HELP = <<~TEXT
       Usage: deployangel <command> [options]
@@ -42,13 +43,18 @@ module DeployAngel
                    or set up coding agents        deployangel install agents
         doctor     Check the setup: this checkout  [--format=text|json]
                    and what DeployAngel has seen
+        setup      Redeem a one-time setup code   deployangel setup --code=CODE
+                   and save the app's tokens here, without printing them
+        token      Print a saved token, to pipe   deployangel token app|api
+                   into a host's or CI's secrets
         mcp        Run the MCP server over stdio (for coding agents)
 
       With no target, verify, plan, and check use the current git HEAD commit.
       In GitHub Actions, GitLab CI, CircleCI, and Buildkite, release fills in the
       commit, a build label (e.g. run-123), and a link to the run automatically.
       In a Kamal hook, it registers Kamal's release (KAMAL_VERSION).
-      Environment: DEPLOYANGEL_API_TOKEN (required), DEPLOYANGEL_URL (default #{Configuration::DEFAULT_ENDPOINT})
+      Token: DEPLOYANGEL_API_TOKEN, else the one `deployangel setup` saved in .deployangel/.
+      Environment: DEPLOYANGEL_URL (default #{Configuration::DEFAULT_ENDPOINT})
 
       Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed out,
                   4 deployment not found, 5 usage, auth, or network error,
@@ -153,6 +159,8 @@ module DeployAngel
       when "check" then check
       when "install" then install
       when "doctor" then doctor
+      when "setup" then setup
+      when "token" then token
       when "mcp" then mcp
       when "version", "--version", "-v" then @stdout.puts(DeployAngel::VERSION) || 0
       when nil, "help", "--help", "-h" then @stdout.puts(HELP) || 0
@@ -354,8 +362,9 @@ module DeployAngel
       def doctor_client
         return @client if @client
 
-        token = [ @env["DEPLOYANGEL_API_TOKEN"], @env["DEPLOYANGEL_TOKEN"] ].find { |value| !value.to_s.empty? } or return
-        Client.new(token: token, endpoint: @env["DEPLOYANGEL_URL"] || Configuration::DEFAULT_ENDPOINT)
+        token = [ @env["DEPLOYANGEL_API_TOKEN"], @env["DEPLOYANGEL_TOKEN"], saved_credentials["api_token"] ]
+          .find { |value| !value.to_s.empty? } or return
+        Client.new(token: token, endpoint: endpoint)
       end
 
       def install
@@ -576,9 +585,63 @@ module DeployAngel
         nil
       end
 
+      # DEPLOYANGEL_API_TOKEN, else the token `deployangel setup` saved here.
       def client
-        @client ||= Client.new(token: @env["DEPLOYANGEL_API_TOKEN"],
-          endpoint: @env["DEPLOYANGEL_URL"] || Configuration::DEFAULT_ENDPOINT)
+        token = @env["DEPLOYANGEL_API_TOKEN"].to_s.empty? ? saved_credentials["api_token"] : @env["DEPLOYANGEL_API_TOKEN"]
+        @client ||= Client.new(token: token, endpoint: endpoint)
+      end
+
+      def endpoint
+        @env["DEPLOYANGEL_URL"].to_s.empty? ? (saved_credentials["endpoint"] || Configuration::DEFAULT_ENDPOINT) : @env["DEPLOYANGEL_URL"]
+      end
+
+      def saved_credentials
+        @saved_credentials ||= Credentials.read(@root)
+      end
+
+      # Redeems a one-time code from "Set up with your coding agent" for the
+      # app's two tokens, and saves them without printing either, so they
+      # stay out of a coding agent's conversation.
+      def setup
+        options = parse(code: nil) { |o, opts| o.on("--code=CODE") { |v| opts[:code] = v } }
+        return usage_error("setup needs --code (from \"Set up with your coding agent\" on the app's page)") if options[:code].to_s.empty?
+
+        redeemer = @client || Client.new(token: nil, endpoint: endpoint, require_token: false)
+        result = redeemer.redeem_setup_code(options[:code].strip)
+        app = result["app"] || {}
+        file = Credentials.write(@root, { "app" => app, "app_token" => result["app_token"], "api_token" => result["api_token"],
+                                          "endpoint" => endpoint })
+        @saved_credentials = nil
+        relative = file.delete_prefix("#{@root}/")
+        @stdout.puts(<<~TEXT)
+          Set up DeployAngel for #{app["name"]} (#{app["environment"]}). Saved its app token and a "CI deploys" token to
+          #{relative}, kept out of git and not shown here. The deployangel command and MCP server here use them.
+
+          Give production the app token without printing it, for example:
+            fly secrets set DEPLOYANGEL_TOKEN=$(#{command_name} token app)
+            heroku config:set DEPLOYANGEL_TOKEN=$(#{command_name} token app)
+          and CI the "CI deploys" token:
+            #{command_name} token api | gh secret set DEPLOYANGEL_API_TOKEN
+        TEXT
+        0
+      end
+
+      # Prints a saved token, for piping into a host's or CI's secrets. Never
+      # run it bare where its output is shown, such as in an agent's chat.
+      def token
+        kind = @argv.shift
+        return usage_error("token needs app or api: deployangel token app") unless %w[app api].include?(kind)
+
+        value = saved_credentials["#{kind}_token"]
+        return usage_error("no token saved here; run deployangel setup --code=<code> first") if value.to_s.empty?
+
+        @stdout.print(value)
+        @stdout.puts if @stdout.tty?
+        0
+      end
+
+      def command_name
+        File.exist?(File.join(@root, "Gemfile")) ? "bundle exec deployangel" : "deployangel"
       end
 
       def usage_error(message)

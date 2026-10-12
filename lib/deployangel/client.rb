@@ -22,8 +22,11 @@ module DeployAngel
 
     attr_reader :endpoint
 
-    def initialize(token:, endpoint: Configuration::DEFAULT_ENDPOINT, timeout: 15)
-      raise Unauthorized, "DEPLOYANGEL_API_TOKEN is not set" if token.to_s.empty?
+    # token: nil only for redeeming a setup code, which is its own credential.
+    def initialize(token:, endpoint: Configuration::DEFAULT_ENDPOINT, timeout: 15, require_token: true)
+      if require_token && token.to_s.empty?
+        raise Unauthorized, "DEPLOYANGEL_API_TOKEN is not set, and no token was saved here by `deployangel setup`"
+      end
 
       @token = token
       @endpoint = endpoint.to_s.chomp("/")
@@ -40,6 +43,9 @@ module DeployAngel
     def verification(deployment_id, all_findings: false)
       get("/api/v1/deployments/#{deployment_id}/verification", all_findings ? { findings: "all" } : {})
     end
+
+    # The app's token and a "CI deploys" token, for a one-time setup code.
+    def redeem_setup_code(code) = post("/api/v1/setup_codes/redeem", { code: code })
 
     def register_deployment(commit: nil, version: nil, kind: nil, provider: nil, source_url: nil)
       post("/api/v1/deployments", { commit: commit, version: version, kind: kind, provider: provider, source_url: source_url }.compact)
@@ -71,7 +77,7 @@ module DeployAngel
       end
 
       def request(request)
-        request["Authorization"] = "Bearer #{@token}"
+        request["Authorization"] = "Bearer #{@token}" unless @token.to_s.empty?
         request["Accept"] = "application/json"
         request["User-Agent"] = "deployangel-cli/#{DeployAngel::VERSION}"
         uri = request.uri

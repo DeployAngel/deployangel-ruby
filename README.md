@@ -430,6 +430,20 @@ with the `verifications:read` scope (plus `deployments` to register deploys or
 report checks). Never use the production telemetry token on a developer
 machine.
 
+To let a coding agent set DeployAngel up, use "Set up with your coding agent"
+on the app's page in DeployAngel: it gives a one-time setup code, not tokens.
+`deployangel setup --code=CODE` redeems it and saves the app's token and a "CI
+deploys" token to `.deployangel/credentials.json`, readable only by you and
+kept out of git, without printing either. The command and MCP server then use
+the saved token whenever `DEPLOYANGEL_API_TOKEN` isn't set. `deployangel token
+app` (or `api`) prints a saved token for piping into a host's or CI's
+secrets, so it never appears on screen or in an agent's conversation:
+
+```bash
+fly secrets set DEPLOYANGEL_TOKEN=$(bundle exec deployangel token app)
+bundle exec deployangel token api | gh secret set DEPLOYANGEL_API_TOKEN
+```
+
 ```bash
 export DEPLOYANGEL_API_TOKEN=da_live_...
 
