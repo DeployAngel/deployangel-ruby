@@ -17,7 +17,8 @@ RSpec.describe DeployAngel::MCP::Server do
 
     expect(result["protocolVersion"]).to eq("2025-03-26")
     expect(result["serverInfo"]).to eq("name" => "deployangel", "version" => DeployAngel::VERSION)
-    expect(result["instructions"]).to include("inconclusive means NOT verified")
+    expect(result["instructions"]).to include("inconclusive means NOT verified", "medium clears a release just as high does",
+      "watching_closely")
     expect(request("initialize", { "protocolVersion" => "1999-01-01" }).dig("result", "protocolVersion")).to eq("2025-06-18")
   end
 
