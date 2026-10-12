@@ -73,8 +73,9 @@ jobs:
           ruby-version: "3.4"
 
       # Exchanges this job's GitHub identity for a short-lived RubyGems key.
+      # Pinned to a commit, as RubyGems' own release-gem action pins it.
       - name: Get RubyGems credentials
-        uses: rubygems/configure-rubygems-credentials@v1
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
 
       - name: Publish to RubyGems
         run: gem push *.gem
