@@ -37,7 +37,9 @@ RSpec.describe "deployangel setup and token" do
       "app" => include("name" => "shop"))
     expect(File.stat(file).mode & 0o777).to eq(0o600)
     expect(File.read(File.join(@root, ".deployangel/.gitignore"))).to eq("*\n")
-    expect(stdout.string).to include("Set up DeployAngel for shop (production)", "not shown here", "token app)")
+    expect(stdout.string).to include("Set up DeployAngel for shop (production)", "not shown here", "token app)",
+      "reads its token only from DEPLOYANGEL_TOKEN", "setup-for-agents.md")
+    expect(stdout.string).not_to include("fly secrets", "heroku config:set")
     expect(stdout.string + stderr.string).not_to include("da_live_")
   end
 

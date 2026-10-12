@@ -2,6 +2,7 @@
 
 require "time"
 require_relative "configuration"
+require_relative "credentials"
 require_relative "metadata"
 require_relative "rails/metadata"
 require_relative "core/release"
@@ -99,8 +100,20 @@ module DeployAngel
           Check.new(status: :warn, message: "The agent last reported #{time(agent["last_received_at"])}, and nothing since",
             fix: "Check the app is running, and that DEPLOYANGEL_TOKEN is still set on its processes.")
         else
-          Check.new(status: :warn, message: "The agent hasn't reported yet",
-            fix: "Deploy with DEPLOYANGEL_TOKEN set to the app's agent token (Settings, Tokens: \"Deployed application\").")
+          Check.new(status: :warn, message: "The agent hasn't reported yet", fix: token_fix)
+        end
+      end
+
+      # The running app reads its token only from DEPLOYANGEL_TOKEN in its
+      # environment, never from the file `deployangel setup` saves.
+      def token_fix
+        if Credentials.find(@root)
+          command = File.exist?(File.join(@root, "Gemfile")) ? "bundle exec deployangel" : "deployangel"
+          "Start or deploy the app with DEPLOYANGEL_TOKEN in its processes' environment. The app token is saved here, " \
+            "so pass it without printing it: $(#{command} token app) in the start command or your host's secrets command."
+        else
+          "Start or deploy the app with DEPLOYANGEL_TOKEN in its processes' environment, set to its app token " \
+            "(\"Deployed application\" in the app's Settings, under API tokens)."
         end
       end
 

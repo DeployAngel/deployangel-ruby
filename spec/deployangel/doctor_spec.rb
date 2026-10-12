@@ -78,6 +78,15 @@ RSpec.describe "deployangel doctor" do
       "· The Dockerfile doesn't set DEPLOYANGEL_REVISION; unless your platform passes the commit, releases won't be named by commit\n" \
       "      Run `deployangel install docker`")
 
+    expect(stdout.string).to include("set to its app token (\"Deployed application\" in the app's Settings, under API tokens)")
+
+    # Once setup saved the app token here, the fix says how to pass it.
+    stdout.truncate(0)
+    DeployAngel::Credentials.write(@root, { "app_token" => "da_live_saved" })
+    doctor(client: client)
+    expect(stdout.string).to include("The app token is saved here, so pass it without printing it: $(deployangel token app)")
+    expect(stdout.string).not_to include("da_live_saved")
+
     stdout.truncate(0)
     write(".do/app.yaml", "envs:\n  - key: DEPLOYANGEL_REVISION\n    value: ${_self.COMMIT_HASH}\n")
     doctor(client: client)

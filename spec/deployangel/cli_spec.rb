@@ -361,6 +361,13 @@ RSpec.describe DeployAngel::CLI do
     def read(path) = File.read(File.join(@root, path))
     def write(path, content) = FileUtils.mkdir_p(File.dirname(File.join(@root, path))) && File.write(File.join(@root, path), content)
 
+    it "says the saved token is used here once deployangel setup has run" do
+      DeployAngel::Credentials.write(@root, { "api_token" => "da_live_saved" })
+      expect(install).to eq(0)
+      expect(stdout.string).to include("use the token `deployangel setup` saved", "Teammates redeem their own setup code")
+      expect(stdout.string).not_to include("need DEPLOYANGEL_API_TOKEN", "da_live_saved")
+    end
+
     it "sets up Claude Code, Cursor, and Codex in a project that has none of their files" do
       expect(install).to eq(0)
 
