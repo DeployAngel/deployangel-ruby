@@ -11,3 +11,12 @@ desc "Measure the agent's overhead (APP_ROOT=path digests that app's files)"
 task :bench do
   ruby "bench/overhead.rb", *ENV.fetch("APP_ROOT", nil)
 end
+
+# Releases go through bin/release and the Release workflow, which publishes
+# to RubyGems by trusted publishing. Bundler's own release task would push
+# from this machine instead.
+Rake::Task["release"].clear
+desc "Release with bin/release instead"
+task :release do
+  abort "Use bin/release X.Y.Z [--push]: it tags the release, and the Release workflow publishes it."
+end

@@ -49,3 +49,15 @@ them too, and the DeployAngel cloud has to accept them first.
 - For maintainers: DeployAngel's own cloud app runs this gem from RubyGems,
   so after a release, run `bundle update deployangel` in the `cloud`
   repository (Dependabot also opens a pull request for it).
+
+## Releasing
+
+Run `bin/release X.Y.Z --push` from an up-to-date `main` with the changes
+under the CHANGELOG's "## Unreleased" heading. It checks X.Y.Z is newer
+than RubyGems' latest, sets `lib/deployangel/version.rb`, dates the
+CHANGELOG section, runs the tests, commits "Release X.Y.Z", tags `vX.Y.Z`,
+and pushes. `.github/workflows/release.yml` builds the gem, waits for a
+maintainer to approve the `rubygems` environment, publishes to RubyGems
+through trusted publishing (no API key, and no MFA code: pushes from a
+maintainer's machine still need one), and then creates the GitHub release.
+Without `--push`, it stops after tagging. `rake release` points here.
