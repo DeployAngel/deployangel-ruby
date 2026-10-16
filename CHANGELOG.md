@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.29 (2026-10-16)
 
 - Reports stuck work, so DeployAngel can fail a release in which a job hangs
   or the queue keeps growing while every job still succeeds. Each minute's
