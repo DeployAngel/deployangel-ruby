@@ -12,12 +12,14 @@ module DeployAngel
     module ActiveJob
       STATE = :@__deployangel_job_state
       PREVIOUS_CONTEXT = :@__deployangel_previous_context
+      RUNNING = :@__deployangel_running
 
       # Marks the fiber as running a job for as long as perform.active_job
-      # lasts, so checkpoints recorded by the job say so. ActiveSupport calls
-      # finish from an ensure, so the previous context (an HTTP request, for
-      # a job performed inline) comes back even when the job raises. It is
-      # kept on the job, so only a perform that started here restores.
+      # lasts, so checkpoints recorded by the job say so, and the job as
+      # running, so one that hangs is reported. ActiveSupport calls finish
+      # from an ensure, so the previous context (an HTTP request, for a job
+      # performed inline) comes back even when the job raises. Both are kept
+      # on the job, so only a perform that started here finishes them.
       module ContextListener
         module_function
 
@@ -26,6 +28,7 @@ module DeployAngel
           return unless job && DeployAngel.recording?
 
           job.instance_variable_set(PREVIOUS_CONTEXT, ExecutionContext.enter(ExecutionContext::JOB))
+          job.instance_variable_set(RUNNING, DeployAngel.job_started(job.class.name))
         rescue StandardError
           nil
         end
@@ -35,6 +38,7 @@ module DeployAngel
           return unless job&.instance_variable_defined?(PREVIOUS_CONTEXT)
 
           ExecutionContext.restore(job.remove_instance_variable(PREVIOUS_CONTEXT))
+          DeployAngel.job_finished(job.remove_instance_variable(RUNNING)) if job.instance_variable_defined?(RUNNING)
         rescue StandardError
           nil
         end

@@ -8,6 +8,7 @@ require_relative "deployangel/core/fingerprint"
 require_relative "deployangel/core/release"
 require_relative "deployangel/core/instance"
 require_relative "deployangel/core/aggregator"
+require_relative "deployangel/core/running_jobs"
 require_relative "deployangel/core/protocol"
 require_relative "deployangel/core/execution_context"
 require_relative "deployangel/core/buffer"
@@ -55,6 +56,14 @@ module DeployAngel
 
     def record_job(**attributes)
       agent&.record_job(**attributes)
+    end
+
+    def job_started(job_class)
+      agent&.job_started(job_class)
+    end
+
+    def job_finished(token)
+      agent&.job_finished(token)
     end
 
     def record_exception(exception, **options)
@@ -128,6 +137,7 @@ require_relative "deployangel/rails/error_subscriber"
 require_relative "deployangel/tasks"
 require_relative "deployangel/metadata"
 require_relative "deployangel/rails/metadata"
+require_relative "deployangel/queue_backlog"
 require_relative "deployangel/sidekiq"
 require_relative "deployangel/apartment"
 require_relative "deployangel/rails/railtie" if defined?(::Rails::Railtie)

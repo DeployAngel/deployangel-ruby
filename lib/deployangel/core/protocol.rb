@@ -32,7 +32,7 @@ module DeployAngel
         end,
         "exceptions" => period.exceptions.values.map { |e| e.merge("sources" => e["sources"].to_h).compact },
         "exceptions_truncated" => period.exceptions_truncated,
-        "jobs" => job_stats(period.jobs),
+        "jobs" => job_stats(period.jobs).merge({ "queue_backlog" => period.queue_backlog }.compact),
         "job_classes" => period.job_classes.map { |key, stats| { "key" => key }.merge(job_stats(stats)) },
         # http and job are always sent, 0 when none, so the cloud can tell
         # this agent from one that doesn't say where checkpoints happened.
@@ -42,14 +42,18 @@ module DeployAngel
       }
     end
 
+    # running and oldest_running_ms only when jobs were running.
     def job_stats(stats)
-      {
+      fields = {
         "processed" => stats.processed,
         "failed" => stats.failed,
         "discarded" => stats.discarded,
         "duration_histogram" => stats.duration.to_protocol,
         "queue_latency_histogram" => stats.queue_latency.to_protocol
       }
+      return fields unless stats.running.positive?
+
+      fields.merge("running" => stats.running, "oldest_running_ms" => stats.oldest_running_ms)
     end
 
     def runtime(framework: nil, framework_version: nil)

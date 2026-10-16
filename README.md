@@ -88,6 +88,10 @@ the dashboard says so.
   queue latency, per job class. Works with every ActiveJob adapter (Solid
   Queue, Sidekiq, GoodJob, ...) and with native Sidekiq jobs through a server
   middleware. Failures that `retry_on` or `discard_on` handle still count.
+- Jobs still running at the end of each minute, and how long the oldest of
+  each class has been running, so a job that hangs is noticed. Sidekiq and
+  Solid Queue worker processes also send the queue backlog (how many jobs are
+  waiting), read once a minute off the request path.
 - Release identity, runtime versions, and a per-process instance ID.
 
 - Exceptions: a stable fingerprint, the exception class, the first line of the

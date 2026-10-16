@@ -103,9 +103,54 @@ RSpec.describe DeployAngel::Agent do
     expect { agent.record_request(route_key: "GET /", status: 200, duration_ms: 1) }.not_to raise_error
   end
 
+  describe "running jobs" do
+    it "reports jobs still running at the end of the minute, with the oldest one's age, on the latest minute only" do
+      agent = build_agent
+      clock.advance(-10) # 14:00:00
+      hanging = agent.job_started("ImportJob")
+      agent.record_job(job_class: "MailJob", duration_ms: 12)
+      clock.advance(125) # 14:02:05, so 14:00 and 14:01 have ended
+      finished = agent.job_started("MailJob")
+      agent.job_finished(finished)
+      allow(DeployAngel::QueueBacklog).to receive(:read).and_return(25)
+
+      agent.flush
+      first, latest = transport.posts.map(&:last)
+      expect(first["jobs"]).not_to include("running", "queue_backlog")
+      expect(latest["jobs"]).to include("processed" => 0, "running" => 1, "oldest_running_ms" => 120_000, "queue_backlog" => 25)
+      expect(latest["job_classes"].sole).to include("key" => "ImportJob", "processed" => 0, "running" => 1,
+        "oldest_running_ms" => 120_000)
+
+      agent.job_finished(hanging)
+      clock.advance(60)
+      agent.flush
+      expect(transport.posts.last.last["job_classes"]).to eq([])
+    end
+
+    it "doesn't read the backlog at shutdown, which has seconds to send" do
+      agent = build_agent
+      agent.job_started("ImportJob")
+      expect(DeployAngel::QueueBacklog).not_to receive(:read)
+
+      agent.flush(include_current: true)
+      expect(transport.posts.last.last["jobs"]).to include("running" => 1, "oldest_running_ms" => 0)
+    end
+
+    it "still sends the minute when reading what's running fails" do
+      agent = build_agent
+      agent.job_started("ImportJob")
+      allow(agent.instance_variable_get(:@running_jobs)).to receive(:snapshot).and_raise("boom")
+      clock.advance(60)
+
+      expect(agent.flush).to eq(1)
+      expect(transport.posts.last.last["jobs"]).not_to include("running")
+    end
+  end
+
   it "takes a fresh identity and empty counts after fork" do
     agent = build_agent
     agent.record_request(route_key: "GET /", status: 200, duration_ms: 1)
+    agent.job_started("ImportJob")
     parent_id = agent.instance.id
 
     agent.after_fork!
@@ -114,6 +159,7 @@ RSpec.describe DeployAngel::Agent do
 
     expect(agent.instance.id).not_to eq(parent_id)
     expect(transport.posts.sole.last.dig("http", "requests")).to eq(0)
+    expect(transport.posts.sole.last["jobs"]).not_to include("running")
   end
 
   it "flushes the minute in progress at shutdown" do

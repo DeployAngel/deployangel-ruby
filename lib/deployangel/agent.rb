@@ -86,6 +86,25 @@ module DeployAngel
       warn_once(:record_job, "DeployAngel failed to record a job: #{e.class}: #{e.message}")
     end
 
+    # Marks a job as running until #job_finished, so one that hangs is still
+    # reported. Returns the token to pass to it.
+    def job_started(job_class)
+      return unless @active
+
+      after_fork! if Process.pid != @pid
+      start_reporter
+      @running_jobs.start(job_class)
+    rescue StandardError => e
+      warn_once(:job_started, "DeployAngel failed to record a running job: #{e.class}: #{e.message}")
+      nil
+    end
+
+    def job_finished(token)
+      @running_jobs.finish(token) if token
+    rescue StandardError => e
+      warn_once(:job_finished, "DeployAngel failed to record a finished job: #{e.class}: #{e.message}")
+    end
+
     def record_discard(job_class:)
       return unless @active
 
@@ -135,7 +154,9 @@ module DeployAngel
     def flush(include_current: false)
       return 0 unless @active
 
-      @aggregator.drain(include_current: include_current, max_periods: config.max_queued_payloads).each do |period|
+      periods = @aggregator.drain(include_current: include_current, max_periods: config.max_queued_payloads)
+      add_stuck_work(periods.last, include_current) if periods.any?
+      periods.each do |period|
         @buffer.push(Transport.encode(Protocol.telemetry(period, instance: @instance, release: release,
           runtime: @runtime, capabilities: capabilities)))
       end
@@ -198,10 +219,24 @@ module DeployAngel
     end
 
     private
+      # What's still running, on the latest period only: as of its end, or
+      # now for the in-progress one at shutdown. The backlog is read here, in
+      # the reporter thread, but not at shutdown, which has seconds to send.
+      def add_stuck_work(period, include_current)
+        ended_at = [ period.started_at + Aggregator::PERIOD_SECONDS, @clock.call ].min
+        @running_jobs.snapshot(ended_at).each do |job_class, (count, oldest_ms)|
+          period.record_running(job_class, count, oldest_ms, config.max_routes)
+        end
+        period.queue_backlog = QueueBacklog.read unless include_current
+      rescue StandardError => e
+        warn_once(:stuck_work, "DeployAngel failed to read running jobs: #{e.class}: #{e.message}")
+      end
+
       def reset_process_state
         @pid = Process.pid
         @instance = Instance.new(env: @env, now: @clock.call)
         @aggregator = Aggregator.new(max_routes: config.max_routes, clock: @clock)
+        @running_jobs = RunningJobs.new(clock: @clock)
         @buffer = Buffer.new(config.max_queued_payloads)
         @paused_until = nil
         @metadata_sent = false

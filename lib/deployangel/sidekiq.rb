@@ -17,6 +17,7 @@ module DeployAngel
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         latency = DeployAngel::Sidekiq.queue_latency_ms(job)
         previous_context = ExecutionContext.enter(ExecutionContext::JOB)
+        running = DeployAngel.job_started(job["class"])
         begin
           yield
         rescue Exception => e # rubocop:disable Lint/RescueException -- recorded, then re-raised untouched
@@ -25,6 +26,7 @@ module DeployAngel
           raise
         ensure
           ExecutionContext.restore(previous_context)
+          DeployAngel.job_finished(running)
         end
         record(job, started, latency, failed: false)
       end
@@ -46,6 +48,7 @@ module DeployAngel
       @installed = true
       DeployAngel.add_capability("jobs")
       ::Sidekiq.configure_server do |config|
+        QueueBacklog.worker!(:sidekiq)
         config.server_middleware { |chain| chain.add(ServerMiddleware) }
         # Jobs that exhausted their retries are discarded.
         config.death_handlers << ->(job, _error) { record_death(job) } if config.respond_to?(:death_handlers)

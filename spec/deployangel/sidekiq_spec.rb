@@ -27,6 +27,17 @@ RSpec.describe DeployAngel::Sidekiq do
     expect(recorded.sole).to include(failed: true)
   end
 
+  it "marks a job running while it runs, until it finishes or raises" do
+    allow(DeployAngel).to receive(:job_started).with("HardWorker").and_return(:token)
+    finished = []
+    allow(DeployAngel).to receive(:job_finished) { |token| finished << token }
+
+    middleware.call(nil, { "class" => "HardWorker" }, "default") { expect(finished).to be_empty }
+    expect { middleware.call(nil, { "class" => "HardWorker" }, "default") { raise "boom" } }.to raise_error("boom")
+
+    expect(finished).to eq(%i[token token])
+  end
+
   it "skips ActiveJob wrappers, which the ActiveJob instrumentation records" do
     middleware.call(nil, { "class" => "Sidekiq::ActiveJob::Wrapper" }, "default") { :done }
 

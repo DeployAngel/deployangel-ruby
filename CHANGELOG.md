@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Reports stuck work, so DeployAngel can fail a release in which a job hangs
+  or the queue keeps growing while every job still succeeds. Each minute's
+  payload says how many jobs are still running and how long the oldest of
+  each class has been running (ActiveJob on any adapter, and native Sidekiq
+  jobs). Sidekiq and Solid Queue worker processes also read the queue backlog,
+  the jobs ready to run and waiting, once a minute from the reporter thread:
+  one pipelined Redis call for Sidekiq, one `COUNT` of
+  `solid_queue_ready_executions` for Solid Queue. Web processes don't read
+  it. Needs a DeployAngel cloud that understands the new fields; older ones
+  ignore them.
+
 ## 0.1.28 (2026-10-12)
 
 - Clearer setup for coding agents, from a first-day rehearsal: `setup` says

@@ -50,6 +50,19 @@ RSpec.describe DeployAngel::Rails::ActiveJob do
     expect(recorded.sole[:queue_latency_ms]).to be_within(1_000).of(5_000)
   end
 
+  it "marks the job running while it performs, until it finishes or raises" do
+    started = []
+    finished = []
+    allow(DeployAngel).to receive(:job_started) { |job_class| started << job_class && :"token#{started.size}" }
+    allow(DeployAngel).to receive(:job_finished) { |token| finished << token }
+
+    SucceedingJob.perform_now
+    expect { RaisingJob.perform_now }.to raise_error(ArgumentError)
+
+    expect(started).to eq(%w[SucceedingJob RaisingJob])
+    expect(finished).to eq(%i[token1 token2])
+  end
+
   it "records an unhandled failure" do
     expect { RaisingJob.perform_now }.to raise_error(ArgumentError)
 

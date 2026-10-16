@@ -19,9 +19,16 @@ module DeployAngel
       end
     end
 
-    JobStats = Struct.new(:processed, :failed, :discarded, :duration, :queue_latency) do
+    # running and oldest_running_ms: jobs still running as the period is
+    # sent, and how long the oldest had been running at its end.
+    JobStats = Struct.new(:processed, :failed, :discarded, :duration, :queue_latency, :running, :oldest_running_ms) do
       def self.empty
-        new(0, 0, 0, Histogram.new, Histogram.new)
+        new(0, 0, 0, Histogram.new, Histogram.new, 0, nil)
+      end
+
+      def add_running(count, oldest_ms)
+        self.running += count
+        self.oldest_running_ms = [ oldest_running_ms, oldest_ms ].compact.max
       end
 
       def record(failed, discarded, duration_ms, queue_latency_ms)
@@ -54,6 +61,8 @@ module DeployAngel
     class Period
       attr_reader :started_at, :requests, :status_counts, :unhandled_exceptions, :histogram, :routes,
         :jobs, :job_classes, :exceptions, :exceptions_truncated, :checkpoints
+      # Jobs waiting in the job backend's queues, read as the period is sent.
+      attr_accessor :queue_backlog
 
       def initialize(started_at)
         @started_at = started_at
@@ -95,6 +104,14 @@ module DeployAngel
         @jobs.record(failed, discarded, duration_ms, queue_latency_ms)
         key = @job_classes.key?(job_class) || @job_classes.size < max_classes - 1 ? job_class : OTHER_ROUTE
         (@job_classes[key] ||= JobStats.empty).record(failed, discarded, duration_ms, queue_latency_ms)
+      end
+
+      # A class with jobs running and none finished is listed too, so a job
+      # that hangs is reported.
+      def record_running(job_class, count, oldest_ms, max_classes)
+        @jobs.add_running(count, oldest_ms)
+        key = @job_classes.key?(job_class) || @job_classes.size < max_classes - 1 ? job_class : OTHER_ROUTE
+        (@job_classes[key] ||= JobStats.empty).add_running(count, oldest_ms)
       end
 
       def record_discard(job_class, max_classes)

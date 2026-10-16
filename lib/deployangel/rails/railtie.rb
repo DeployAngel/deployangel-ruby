@@ -12,6 +12,7 @@ module DeployAngel
       initializer "deployangel.jobs" do
         ActiveSupport.on_load(:active_job) { DeployAngel::Rails::ActiveJob.install }
         DeployAngel::Sidekiq.install
+        DeployAngel::QueueBacklog.install
       end
 
       # Handled reports (Rails.error.handle / Rails.error.report) are shown for
