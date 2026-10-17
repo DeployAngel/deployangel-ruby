@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.30 (2026-10-16)
 
 - Hanami 2.2 or later: `require "deployangel/hanami"` and
   `DeployAngel::Hanami.install(self)` in the app's class. Requests are
