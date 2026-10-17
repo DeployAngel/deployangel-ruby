@@ -214,6 +214,21 @@ module DeployAngel
       nil
     end
 
+    # A route at a conventional health-check path ("/healthz"), left out of
+    # the route table as the request middleware leaves it out of telemetry.
+    def health_check_path?(path)
+      segments = path.to_s.split("/").reject(&:empty?)
+      Rack::Http::HEALTH_CHECK_PATHS.include?(segments.last) && segments.none? { |segment| segment.start_with?(":", "*") }
+    end
+
+    # A source file in the app, relative to its root; nil for one in a gem.
+    def app_relative(file)
+      return unless file&.start_with?("#{@root}/")
+
+      path = file.delete_prefix("#{@root}/")
+      path unless path.start_with?("vendor/", ".bundle/")
+    end
+
     # The path, or the same name with .yaml if only that exists.
     def yaml_path(path)
       [ path, path.sub(/\.yml\z/, ".yaml") ].find { |candidate| File.file?(candidate) }

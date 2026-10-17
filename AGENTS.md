@@ -1,6 +1,7 @@
 # DeployAngel agent: working rules
 
-The `deployangel` gem runs inside customers' production Rails apps. These rules
+The `deployangel` gem runs inside customers' production Rails, Hanami, and
+Sinatra apps. These rules
 come before any feature.
 
 ## Never harm the customer's app
@@ -33,15 +34,19 @@ detail.
 
 The Agent Protocol speaks in HTTP, routes, exceptions, jobs, queues, and
 scheduled tasks, never in ActiveJob, Sidekiq, or ActionController. The adapters
-in `lib/deployangel/rails/` translate Rails into those concepts, and agents for
-other frameworks will speak the same protocol. Protocol changes must work for
+in `lib/deployangel/rails/`, `lib/deployangel/hanami/`, and
+`lib/deployangel/sinatra/` translate their framework into those concepts, and the Python and .NET agents speak the same
+protocol. Protocol changes must work for
 them too, and the DeployAngel cloud has to accept them first.
 
 ## Compatibility and tests
 
-- Supports Ruby 3.1 and Rails 7.1 or later. CI runs the oldest and newest of
-  each (`.github/workflows/ci.yml`), so don't use newer Ruby or Rails APIs
-  without a fallback.
+- Supports Ruby 3.1, Rails 7.1, Hanami 2.2, and Sinatra 3.0 or later. CI
+  runs the oldest and newest of each (`.github/workflows/ci.yml`), so don't
+  use newer Ruby or framework APIs without a fallback. The Hanami and
+  Sinatra specs run when `HANAMI_VERSION` or `SINATRA_VERSION` is set
+  (`SINATRA_VERSION=4.2 bundle exec rspec`); Hanami before 2.3.2 needs
+  Bundler 2.
 - `bundle exec rspec` must pass. Test the failure paths too: network errors,
   timeouts, full buffers, and forks.
 - Update the README and CHANGELOG when what the agent sends, or how it's

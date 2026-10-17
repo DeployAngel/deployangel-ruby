@@ -10,7 +10,9 @@ module DeployAngel
     # An adapter subclasses it, answers route_pattern (and rendered_exception
     # if the framework renders exceptions itself), and is inserted at the top
     # of the stack, so it sees the final status after the framework's own
-    # error pages. DeployAngel::Rails::Http is the Rails adapter.
+    # error pages. A framework that renders exceptions outside its app
+    # middleware instead answers raised_status. DeployAngel::Rails::Http and
+    # DeployAngel::Hanami::Http are the adapters.
     #
     # A request is only counted against a route pattern the framework
     # matched, never the raw path, which keeps IDs out of route keys.
@@ -26,9 +28,16 @@ module DeployAngel
         @app = app
       end
 
-      def call(env)
-        return @app.call(env) unless DeployAngel.recording?
+      # Set on a request once a DeployAngel middleware records it. Apps nest
+      # (a Sinatra app used as another's middleware, or mounted inside
+      # Rails), so a request can pass through more than one; only the
+      # outermost records it.
+      RECORDED = "deployangel.recorded"
 
+      def call(env)
+        return @app.call(env) if !DeployAngel.recording? || env[RECORDED]
+
+        env[RECORDED] = true
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         Redaction.request_host = env["HTTP_HOST"]
         # Checkpoints recorded from here until the app returns count as
@@ -37,7 +46,10 @@ module DeployAngel
         begin
           status, headers, body = @app.call(env)
         rescue Exception => e # rubocop:disable Lint/RescueException -- recorded, then re-raised untouched
-          record(env, 500, started, unhandled: true, exception: e)
+          # A framework that renders exceptions outside this middleware turns
+          # some into a 4xx; only one that ends in a 5xx is unhandled.
+          status = raised_status(env, e)
+          record(env, status, started, unhandled: status >= 500, exception: (e if status >= 500))
           raise
         ensure
           ExecutionContext.restore(previous_context)
@@ -63,6 +75,12 @@ module DeployAngel
         # asked for on a 5xx.
         def rendered_exception(env)
           nil
+        end
+
+        # The status a raised exception will be rendered as, by a framework
+        # that renders it after this middleware. 500 unless an adapter knows.
+        def raised_status(_env, _exception)
+          500
         end
 
         def route_key(env)

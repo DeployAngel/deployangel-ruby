@@ -1,6 +1,6 @@
-# DeployAngel for Rails
+# DeployAngel for Rails, Hanami, and Sinatra
 
-The DeployAngel agent. It watches what your Rails app does in production and
+The DeployAngel agent. It watches what your Rails, Hanami, or Sinatra app does in production and
 reports one small aggregated payload per process per minute. DeployAngel uses
 that to verify every deployment, and to tell you (or your coding agent) when a
 release is **cleared** and you can stop watching it.
@@ -19,6 +19,59 @@ Set these in production:
 ```bash
 DEPLOYANGEL_TOKEN=da_live_...           # an ingestion token with the telemetry scope
 ```
+
+### Hanami
+
+Requires Hanami 2.2 or later. Hanami has no Railtie, so install it where the
+app is configured:
+
+```ruby
+# config/app.rb
+require "hanami"
+require "deployangel/hanami"
+
+module Bookshelf
+  class App < Hanami::App
+    DeployAngel::Hanami.install(self)
+  end
+end
+```
+
+It names each request by the route it matched (through a router resolver that
+builds on any you've configured), records requests and the exceptions Hanami
+renders as error pages, and starts the agent when the app boots (as
+`config.ru`'s `hanami/boot` does). A process that loads the app without booting
+it, such as `hanami console`, doesn't report. Native Sidekiq jobs are recorded
+as in Rails; there's nothing else to set up for them.
+
+### Sinatra
+
+Requires Sinatra 3.0 or later. Register the extension before the app's
+routes, so it knows the file each route is defined in:
+
+```ruby
+require "sinatra/base"
+require "deployangel/sinatra"
+
+class Bookshelf < Sinatra::Base
+  register DeployAngel::Sinatra
+
+  get "/books/:id" do
+    # ...
+  end
+end
+```
+
+A classic app registers it at the top level, after `require "sinatra"`. It
+records each request by the route Sinatra ran (after `pass`, the route that
+answered), with the app's mount point from `config.ru` (`map "/api"`), and the
+exceptions Sinatra renders as error pages. A request that passes through more
+than one app (one used as another's middleware) is recorded once. File paths
+are relative to the working directory, the app's root in most deploys. An
+exception raised directly in a route block is named by its file, since the
+block has no method name, so two raised in different routes of the same file
+share a fingerprint; ones raised in helpers or other classes are told apart as
+usual.
 
 The agent must know which release it is running. It finds it in this order:
 
@@ -83,7 +136,8 @@ the dashboard says so.
   and a latency histogram, both per app and per route.
 - Routes are recorded as the matched pattern (`GET /users/:id`), never the raw
   path. At most 100 routes are sent per payload; the rest are folded into
-  `__other__`.
+  `__other__`. In Hanami, a request no route matched is a 404, not an
+  exception, though Hanami raises one to render it.
 - Background jobs: attempts, failed attempts, discarded jobs, duration, and
   queue latency, per job class. Works with every ActiveJob adapter (Solid
   Queue, Sidekiq, GoodJob, ...) and with native Sidekiq jobs through a server
@@ -101,9 +155,11 @@ the dashboard says so.
   job switched to. Other words are kept: `Payment failed for Jane Doe` is sent
   as it is. If your app's messages might hold personal or health data, [turn
   messages off](#exception-messages).
-- Once per process: the route table, job classes, recurring schedules
-  declared for Solid Queue, GoodJob, sidekiq-cron, sidekiq-scheduler, or
-  whenever, critical
+- Once per process: the route table (in Hanami, with each route's action
+  class and the paths of its action, view, and template files; in Sinatra,
+  with the path of the file each route is defined in), job classes,
+  recurring schedules declared for Solid Queue, GoodJob, sidekiq-cron,
+  sidekiq-scheduler, or whenever, critical
   flows, and file digests (relative paths and hashes, never file contents) so
   DeployAngel can tell which routes changed in a release.
   Disable digests with `DEPLOYANGEL_FILE_DIGESTS=false`.

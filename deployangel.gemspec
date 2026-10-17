@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.authors = [ "Jordan Owens" ]
   spec.email = [ "jordan@deployangel.com" ]
 
-  spec.summary = "DeployAngel agent for Rails: production verification for every deployment."
+  spec.summary = "DeployAngel agent for Rails, Hanami, and Sinatra: production verification for every deployment."
   spec.description = "Aggregates HTTP requests, background jobs, exceptions, and recurring schedules " \
     "in-process and reports one small payload per process per minute to DeployAngel, which verifies " \
     "each deployment and tells you, or your coding agent, when a release is cleared and safe to stop " \

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- Hanami 2.2 or later: `require "deployangel/hanami"` and
+  `DeployAngel::Hanami.install(self)` in the app's class. Requests are
+  recorded by the route pattern they matched, scopes' and slices' prefixes
+  included, through a router resolver that builds on any the app configured;
+  exceptions Hanami renders as error pages count as unhandled, and the 404
+  Hanami raises for an unknown path counts as a 404. The agent starts when
+  the app boots. The metadata lists each route with its action class and the
+  paths of its action, view, and template files, and digests Hanami's layout
+  (`app/`, `slices/`, `config/`, `lib/`).
+- Sinatra 3.0 or later: `require "deployangel/sinatra"` and
+  `register DeployAngel::Sinatra`, in modular and classic apps. Requests are
+  recorded by the route Sinatra ran, with the app's mount point; exceptions
+  Sinatra renders as error pages count as unhandled. The metadata lists
+  each route with the file it's defined in.
+- The Rack base middleware asks an adapter what status a raised exception
+  will be rendered as (`raised_status`); only a 5xx counts as unhandled.
+  Rails keeps 500. It also records a request once when it passes through
+  more than one DeployAngel middleware (nested Sinatra apps, or a Sinatra
+  app mounted in Rails).
+
 ## 0.1.29 (2026-10-16)
 
 - Reports stuck work, so DeployAngel can fail a release in which a job hangs
