@@ -92,4 +92,27 @@ RSpec.describe DeployAngel::MCP::Server do
 
     expect(output.string.lines.map { |line| JSON.parse(line) }).to eq([ { "jsonrpc" => "2.0", "id" => 1, "result" => {} } ])
   end
+
+  it "starts without a token, from the command line, and each tool says how to set one" do
+    requests = [
+      { "jsonrpc" => "2.0", "id" => 1, "method" => "initialize", "params" => { "protocolVersion" => "2025-06-18" } },
+      { "jsonrpc" => "2.0", "id" => 2, "method" => "tools/list" },
+      { "jsonrpc" => "2.0", "id" => 3, "method" => "tools/call", "params" => { "name" => "get_verification", "arguments" => {} } }
+    ]
+    stdout = StringIO.new
+    stderr = StringIO.new
+
+    Dir.mktmpdir do |root|
+      code = DeployAngel::CLI.new([ "mcp" ], env: {}, stdin: StringIO.new(requests.map { |request| "#{JSON.generate(request)}\n" }.join),
+        stdout: stdout, stderr: stderr, root: root, git_head: false).run
+      expect(code).to eq(0)
+    end
+
+    responses = stdout.string.lines.to_h { |line| JSON.parse(line).then { |response| [ response["id"], response ] } }
+    expect(responses[1].dig("result", "serverInfo", "name")).to eq("deployangel")
+    expect(responses[2].dig("result", "tools").map { |tool| tool["name"] }).to include("wait_for_verification")
+    expect(responses[3]["result"]).to include("isError" => true)
+    expect(responses[3].dig("result", "content", 0, "text")).to include('Set DEPLOYANGEL_API_TOKEN to a "CLI & coding agents" token')
+    expect(stderr.string).to include("no API token yet")
+  end
 end

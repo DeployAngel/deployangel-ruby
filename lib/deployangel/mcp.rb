@@ -39,11 +39,14 @@ module DeployAngel
         "latest" => { "type" => "boolean", "description" => "Use the most recent deployment." }
       }.freeze
 
+      MISSING_TOKEN = "DeployAngel has no API token yet. Set DEPLOYANGEL_API_TOKEN to a \"CLI & coding agents\" token " \
+        "from your app's Settings in DeployAngel, or run `deployangel setup` in the project, then restart this MCP server."
       ERROR_CODES = { parse: -32_700, invalid: -32_600, method: -32_601, params: -32_602, internal: -32_603 }.freeze
 
       def initialize(client:, input: $stdin, output: $stdout, error_output: $stderr,
-                     sleeper: ->(seconds) { sleep(seconds) }, clock: -> { Time.now }, git_head: -> {})
+                     sleeper: ->(seconds) { sleep(seconds) }, clock: -> { Time.now }, git_head: -> {}, token_missing: false)
         @client = client
+        @token_missing = token_missing
         @input = input
         @output = output
         @error_output = error_output
@@ -138,6 +141,8 @@ module DeployAngel
         end
 
         def call_tool(name, arguments)
+          return { "content" => [ { "type" => "text", "text" => MISSING_TOKEN } ], "isError" => true } if @token_missing
+
           content =
             case name
             when "get_verification" then waiter.wait(target(arguments), wait: false).then { |o| verification_content(o) }

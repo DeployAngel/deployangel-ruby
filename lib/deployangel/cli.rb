@@ -555,10 +555,18 @@ module DeployAngel
         lines.join
       end
 
+      # Without a token the server still starts, and each tool says how to set
+      # one: many agents only report a server that won't start as "failed to
+      # start", with no reason.
       def mcp
         require_relative "mcp"
+        token_missing = @client.nil? && api_token.to_s.empty?
+        if token_missing
+          @stderr.puts("deployangel mcp: no API token yet; each tool will say how to set one.")
+          @client = Client.new(token: nil, endpoint: endpoint, require_token: false)
+        end
         MCP::Server.new(client: client, input: @stdin, output: @stdout, error_output: @stderr,
-          sleeper: @sleeper, clock: @clock, git_head: method(:git_head)).run
+          sleeper: @sleeper, clock: @clock, git_head: method(:git_head), token_missing: token_missing).run
         0
       end
 
@@ -608,8 +616,11 @@ module DeployAngel
 
       # DEPLOYANGEL_API_TOKEN, else the token `deployangel setup` saved here.
       def client
-        token = @env["DEPLOYANGEL_API_TOKEN"].to_s.empty? ? saved_credentials["api_token"] : @env["DEPLOYANGEL_API_TOKEN"]
-        @client ||= Client.new(token: token, endpoint: endpoint)
+        @client ||= Client.new(token: api_token, endpoint: endpoint)
+      end
+
+      def api_token
+        @env["DEPLOYANGEL_API_TOKEN"].to_s.empty? ? saved_credentials["api_token"] : @env["DEPLOYANGEL_API_TOKEN"]
       end
 
       def endpoint
