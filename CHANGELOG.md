@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- An exception whose message has bytes that aren't valid UTF-8, as a
+  message can when it quotes a malformed request, is now recorded. The bad
+  bytes become U+FFFD. Before, the agent dropped the exception with a
+  warning (`Encoding::CompatibilityError`), though the request's 500 still
+  counted.
+
 ## 0.1.32 (2026-10-21)
 
 - `deployangel mcp` starts without an API token. Each tool then answers with

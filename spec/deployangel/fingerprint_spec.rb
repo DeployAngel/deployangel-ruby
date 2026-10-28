@@ -48,6 +48,17 @@ RSpec.describe DeployAngel::Fingerprint do
     expect(message).to eq("User <n> (<email>) not found: <string> <hex>")
   end
 
+  it "replaces bytes that aren't valid UTF-8, which a message can carry from a request, so the exception is still recorded" do
+    expect(described_class.normalize_message("bad \xFF\xFE input")).to eq("bad \uFFFD\uFFFD input")
+    expect(described_class.normalize_message("bad \xFF input".b)).to eq("bad \uFFFD input")
+    expect(described_class.normalize_message("caf\xE9".dup.force_encoding(Encoding::ISO_8859_1))).to eq("café")
+
+    error = exception_with([ "/app/app/models/order.rb:1:in 'Order#total'" ], klass: ArgumentError, message: "bad \xFF input")
+    details = described_class.for(error, root: root, redactions: [ [ "example.com", "<host>" ] ])
+    expect(details["message"]).to eq("bad \uFFFD input")
+    expect { JSON.generate(details) }.not_to raise_error
+  end
+
   it "keeps unquoted words, which only turning messages off removes" do
     expect(described_class.normalize_message("Payment of 1250.00 failed for Jane Doe"))
       .to eq("Payment of <n> failed for Jane Doe")

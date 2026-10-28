@@ -55,12 +55,21 @@ module DeployAngel
     # Only quoted values, numbers, emails, UUIDs, and long hex are replaced;
     # unquoted words, such as a name in a message the app builds, are kept.
     def normalize_message(message, redactions = [])
-      text = message.to_s.lines.first.to_s.strip
+      text = utf8(message.to_s).lines.first.to_s.strip
       redactions.each do |value, placeholder|
         text = text.gsub(/(?<![[:alnum:]])#{Regexp.escape(value)}(?![[:alnum:]])/i, placeholder)
       end
       MESSAGE_PLACEHOLDERS.each { |pattern, placeholder| text = text.gsub(pattern, placeholder) }
       text[0, MAX_MESSAGE]
+    end
+
+    # A message can carry bytes from a request (a header, a path, a body)
+    # that aren't valid UTF-8, which matching and the JSON payload both
+    # reject, and the exception would go unrecorded. Bad bytes become U+FFFD.
+    def utf8(text)
+      text = text.dup.force_encoding(Encoding::UTF_8) if text.encoding == Encoding::BINARY
+      text = text.encode(Encoding::UTF_8, invalid: :replace, undef: :replace) unless text.encoding == Encoding::UTF_8
+      text.scrub
     end
 
     def app_frame?(frame)
