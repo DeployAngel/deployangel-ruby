@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.33 (2026-10-28)
 
 - An exception whose message has bytes that aren't valid UTF-8, as a
   message can when it quotes a malformed request, is now recorded. The bad
