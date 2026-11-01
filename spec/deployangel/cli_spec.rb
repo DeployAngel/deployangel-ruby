@@ -51,10 +51,11 @@ RSpec.describe DeployAngel::CLI do
     end
     let(:document) { verdict_document(state: "observing").merge("exercise_plan" => plan) }
     let(:sent) { [] }
+    let(:sent_headers) { [] }
 
     def exercise(*argv, client:, answer: 200)
       described_class.new([ "exercise", *argv ], env: {}, stdout: stdout, stderr: stderr, client: client, sleeper: sleeper,
-        clock: clock, git_head: "81ac27d0000", requester: ->(url) { sent << url && answer }).run
+        clock: clock, git_head: "81ac27d0000", requester: ->(url, headers) { sent << url && sent_headers << headers && answer }).run
     end
 
     it "sends the plan's read-only requests from here, spreads the request shortfall, and records what it sent" do
@@ -80,7 +81,7 @@ RSpec.describe DeployAngel::CLI do
 
     it "stops requesting a page the app doesn't serve, and sends its share to the pages that answered" do
       client = FakeClient.new(documents: [ document ])
-      requester = ->(url) { sent << url && (url.end_with?("/about") ? 404 : 200) }
+      requester = ->(url, _headers) { sent << url && (url.end_with?("/about") ? 404 : 200) }
       described_class.new([ "exercise", "--url=https://shop.example.com" ], env: {}, stdout: stdout, stderr: stderr, client: client,
         sleeper: sleeper, clock: clock, git_head: "81ac27d0000", requester: requester).run
 
@@ -109,6 +110,42 @@ RSpec.describe DeployAngel::CLI do
       expect(stdout.string).to include("GET /products ×10: 401 ×10")
       expect(stdout.string).not_to include("No page answered")
       expect(client.calls.map(&:first)).to include(:exercise)
+    end
+
+    it "sends headers from --header and the environment, naming them but never showing their values" do
+      client = FakeClient.new(documents: [ document ])
+      env = { "DEPLOYANGEL_EXERCISE_HEADERS" => "Cookie: session_id=s3cret\n\nX-Test: 1\n" }
+      code = described_class.new([ "exercise", "--url=https://shop.example.com", "--header=Authorization: Bearer t0ken" ], env: env,
+        stdout: stdout, stderr: stderr, client: client, sleeper: sleeper, clock: clock, git_head: "81ac27d0000",
+        requester: ->(url, headers) { sent << url && sent_headers << headers && 200 }).run
+
+      expect(code).to eq(0)
+      expect(sent_headers.uniq).to eq([ { "Authorization" => "Bearer t0ken", "Cookie" => "session_id=s3cret", "X-Test" => "1" } ])
+      expect(stdout.string).to include("With headers: Authorization, Cookie, X-Test (values not shown)")
+      expect(stdout.string).not_to include("t0ken", "s3cret")
+      expect(client.calls.find { |call| call.first == :exercise }.to_s).not_to include("t0ken", "s3cret")
+    end
+
+    it "rejects a header it can't send as given, without echoing its value" do
+      client = FakeClient.new(documents: [ document ])
+      expect(exercise("--url=https://shop.example.com", "--header=Authorization Bearer t0ken", client: client)).to eq(5)
+      expect(stderr.string).to include(%(header 1 must look like "Name: value"))
+      expect(stderr.string).not_to include("t0ken")
+      expect(sent).to be_empty
+    end
+
+    it "fills path parameters from --param, records them under the route, and names what's still missing" do
+      client = FakeClient.new(documents: [ document ])
+      expect(exercise("--url=https://shop.example.com", "--param=id=7", client: client)).to eq(0)
+
+      expect(sent).to include("https://shop.example.com/orders/7")
+      routes = client.calls.find { |call| call.first == :exercise }[2][:routes]
+      expect(routes.map { |r| r["key"] }).to include("GET /orders/:id")
+      expect(stdout.string).to include("GET /items/<int:pk>/ (needs a path parameter: pk)", "Fill path parameters with --param, such as --param pk=42.")
+      expect(client.calls.find { |call| call.first == :exercise }[2][:skipped]).to all(satisfy { |s| !s.key?("missing") })
+
+      expect(exercise("--url=https://shop.example.com", "--param=id", client: client)).to eq(5)
+      expect(stderr.string).to include("--param must look like name=value")
     end
 
     it "sends nothing on a dry run, and caps the requests it sends" do

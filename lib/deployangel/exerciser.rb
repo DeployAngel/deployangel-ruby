@@ -7,9 +7,10 @@ module DeployAngel
   # `deployangel exercise`: sends a release's exercise plan's read-only
   # requests to production from the customer's side, then records what it
   # sent, so the release page says which routes were exercised that way.
-  # Only GET routes with no path parameters and not marked as changing data;
-  # the rest are skipped and named, for the agent or a smoke test with a test
-  # account. The requests count like any traffic through the app's agent.
+  # Only GET routes not marked as changing data, and only those whose path
+  # parameters the caller filled (--param id=42); the rest are skipped and
+  # named, for the agent or a smoke test with a test account. The requests
+  # count like any traffic through the app's agent.
   class Exerciser
     MAX_REQUESTS = 200
     INTERVAL = 0.2 # about 5 requests a second
@@ -19,8 +20,14 @@ module DeployAngel
     # A route table can list pages an app doesn't serve, like the edit page
     # of a resource that has none. One answer like this is enough to know.
     NOT_SERVED = [ 404, 405, 410 ].freeze
-    # Rails' :id and *path, Django's <int:pk>, FastAPI's {id}.
-    PARAMETER = /\/[:*{<]/
+    # A path parameter, capturing its name: Rails' :id and *path, FastAPI's
+    # and ASP.NET Core's {id}, {id:int}, and {*path}, Django's <int:pk>.
+    PARAMETER = /[:*]([A-Za-z_]\w*)|\{\*{0,2}([A-Za-z_]\w*)(?::[^}]*)?\??\}|<(?:\w+:)?([A-Za-z_]\w*)>/
+    # One that can span segments, so its value keeps its slashes.
+    GLOB = %r{\A(?:\*|\{\*|\{\w+:path\}|<path:)}
+    PARAM = /\A([A-Za-z_]\w*)=(.+)\z/
+    # "Name: value", as with curl -H: a header name, then a value on one line.
+    HEADER = /\A([!#$%&'*+.^_`|~0-9A-Za-z-]+):[ \t]*(\S[^\r\n]*)\z/
 
     Target = Struct.new(:key, :path, :count)
     # codes: each route's exact status codes, nil for no answer, for
@@ -36,8 +43,30 @@ module DeployAngel
       end
     end
 
-    def initialize(base_url:, max_requests: MAX_REQUESTS, sleeper: ->(seconds) { sleep(seconds) }, requester: nil)
+    # Headers to send with every request, such as a token or a test
+    # account's session cookie, from "Name: value" lines. Raises
+    # ArgumentError naming the line, never its value.
+    def self.parse_headers(lines)
+      lines.map(&:strip).reject(&:empty?).each_with_index.to_h do |line, i|
+        match = HEADER.match(line) or raise ArgumentError, "header #{i + 1} must look like \"Name: value\""
+        [ match[1], match[2].rstrip ]
+      end
+    end
+
+    # Path parameter values, from "name=value" (--param id=42). Each fills
+    # that name in every route that has it.
+    def self.parse_params(pairs)
+      pairs.to_h do |pair|
+        match = PARAM.match(pair) or raise ArgumentError, "--param must look like name=value, such as --param id=42 (got #{pair.inspect})"
+        [ match[1], match[2] ]
+      end
+    end
+
+    # headers go only to base_url's host: redirects aren't followed.
+    def initialize(base_url:, headers: {}, params: {}, max_requests: MAX_REQUESTS, sleeper: ->(seconds) { sleep(seconds) }, requester: nil)
       @base = URI(base_url)
+      @headers = headers
+      @params = params
       @max_requests = max_requests
       @sleeper = sleeper
       @requester = requester || method(:get)
@@ -51,11 +80,12 @@ module DeployAngel
         next unless item["kind"] == "route"
 
         method, path = item["key"].to_s.split(" ", 2)
-        reason =
-          if item["mutating"] || method != "GET" then "changes data"
-          elsif path.nil? || path.match?(PARAMETER) then "needs a path parameter"
-          end
-        next skipped << { "key" => item["key"], "reason" => reason } if reason
+        next skipped << { "key" => item["key"], "reason" => "changes data" } if item["mutating"] || method != "GET"
+
+        path, missing = path ? fill(path) : [ nil, [] ]
+        if path.nil? || missing.any?
+          next skipped << { "key" => item["key"], "reason" => "needs a path parameter", "missing" => missing }
+        end
 
         needed = item["runs_needed"] ? item["runs_needed"].to_i - item["runs"].to_i : 1
         targets << Target.new(item["key"], path, [ needed, 1 ].max)
@@ -98,6 +128,24 @@ module DeployAngel
         codes: routes.to_h { |route| [ route["key"], @codes[route["key"]].to_h ] }, unsent: unsent)
     end
 
+    # The path with the given parameters filled in, and the names of any
+    # left unfilled.
+    def fill(path)
+      missing = []
+      filled = path.gsub(PARAMETER) do |segment|
+        name = $1 || $2 || $3
+        value = @params[name]
+        unless value
+          missing << name
+          next segment
+        end
+
+        glob = segment.match?(GLOB)
+        (glob ? value.split("/", -1) : [ value ]).map { |part| URI.encode_www_form_component(part).gsub("+", "%20") }.join("/")
+      end
+      [ filled, missing.uniq ]
+    end
+
     def url_for(path)
       uri = @base.dup
       uri.path = "#{@base.path.chomp("/")}#{path}"
@@ -108,7 +156,7 @@ module DeployAngel
     private
       def send_request(target)
         @sleeper.call(INTERVAL) if @sent.positive?
-        status = @requester.call(url_for(target.path))
+        status = @requester.call(url_for(target.path), @headers)
         @sent += 1
         kind = status ? "#{status / 100}xx" : "error"
         @statuses[target.key][kind] += 1
@@ -139,11 +187,12 @@ module DeployAngel
 
       # The status code, or nil when there was no answer. Redirects aren't
       # followed: the request already reached the app.
-      def get(url)
+      def get(url, headers)
         uri = URI(url)
         request = Net::HTTP::Get.new(uri)
         request["User-Agent"] = "DeployAngel-Exercise/#{DeployAngel::VERSION} (+https://www.deployangel.com/docs#exercise)"
         request["Accept"] = "text/html,application/json;q=0.9,*/*;q=0.8"
+        headers.each { |name, value| request[name] = value }
         Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: TIMEOUT, read_timeout: TIMEOUT) do |http|
           http.request(request).code.to_i
         end

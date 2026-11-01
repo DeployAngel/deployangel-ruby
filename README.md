@@ -597,8 +597,8 @@ evidence. A release deployed during an app's first 24 hours can't clear,
 so its plan lists nothing.
 
 `deployangel exercise --url=<production URL>` does the read-only part for
-you, from wherever it runs: it requests the plan's GET routes that have no
-path parameters, spreading any request shortfall across them (at most 200
+you, from wherever it runs: it requests the plan's GET routes whose path
+parameters it can fill, spreading any request shortfall across them (at most 200
 requests, about 5 a second, as `DeployAngel-Exercise`), then records what it
 sent on the release, where the page lists it under "Exercised from your
 side". It skips and names routes that change data or need a path
@@ -607,6 +607,19 @@ share to the pages that answered. It prints each route's status codes. If
 every page answers 404, 405, or 410, it records nothing and exits 5, since
 the URL is probably not the app's own host (a marketing site, say). A "CLI
 & coding agents" token can run it. `--dry-run` shows what it would send.
+
+`--param id=42` fills a path parameter (`:id`, `{id}`, `<int:id>`) in every
+route that has it, so `--param app_id=3 --param id=212` reaches
+`GET /apps/:app_id/deployments/:id`. A value fills every route with that
+name, so a wrong one just gets a 404 and no more requests.
+
+`--header="Name: value"` sends a header with every request, such as
+`Authorization: Bearer …` for an API or a test account's session cookie for
+signed-in pages. Put secrets in `DEPLOYANGEL_EXERCISE_HEADERS` instead (one
+header per line), which keeps them out of shell history. Headers go only to
+the `--url` host, since redirects aren't followed. The output names them
+but never shows their values, and they're never sent to DeployAngel. Use a
+test account with as little access as possible: its cookie is a full sign-in.
 
 ### Suggested instructions for your coding agent
 
@@ -639,8 +652,9 @@ verdict: call the `wait_for_verification` MCP tool with the commit and
   If its status is "exercisable" or "waiting_for_activity", run
   `bundle exec deployangel exercise --url=<production URL>`: it sends the
   plan's read-only requests and records them on the release. Offer to
-  exercise what it skips: routes that change data only with a test account
-  or after asking. If the status is "warm_up", nothing run can clear it.
+  exercise what it skips: fill a route's IDs with `--param name=value`,
+  using an ID you can see in the app, and run routes that change data only
+  with a test account or after asking. If the status is "warm_up", nothing run can clear it.
 ```
 
 ## Development

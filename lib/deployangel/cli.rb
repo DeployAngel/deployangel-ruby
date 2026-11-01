@@ -34,7 +34,8 @@ module DeployAngel
         plan       What to exercise so a release  [--commit=SHA | --version=V | --deployment=ID]
                    clears sooner                 [--format=text|json]
         exercise   Send the plan's read-only      --url=PRODUCTION_URL [--commit=SHA | --version=V | --deployment=ID]
-                   requests to production        [--max-requests=200] [--dry-run]
+                   requests to production        [--param=NAME=VALUE] [--header="Name: value"]
+                                                 [--max-requests=200] [--dry-run]
         exception  Details for a fingerprint     deployangel exception FINGERPRINT
         check      Report a smoke test result    --name=NAME --status=pass|fail [--covers=a,b]
                                                  [--commit=SHA | --deployment=ID] [--details-url=URL]
@@ -116,8 +117,9 @@ module DeployAngel
         If its status is "exercisable" or "waiting_for_activity", run
         `bundle exec deployangel exercise --url=<production URL>`: it sends the
         plan's read-only requests and records them on the release. Offer to
-        exercise what it skips: routes that change data only with a test account
-        or after asking. If the status is "warm_up", nothing run can clear it.
+        exercise what it skips: fill a route's IDs with `--param name=value`,
+        using an ID you can see in the app, and run routes that change data only
+        with a test account or after asking. If the status is "warm_up", nothing run can clear it.
       - Confidence `medium` clears a release just as `high` does (high also needs 80%
         coverage and a full baseline), so don't call a medium clearance weak.
         Warnings (`suspicious: true`) aren't failures: report them as "watching
@@ -282,8 +284,10 @@ module DeployAngel
       # Sends the plan's read-only requests from here, then records what it
       # sent on the release (spec §16, Exercise records).
       def exercise
-        options = parse(max_requests: Exerciser::MAX_REQUESTS, dry_run: false) do |o, opts|
+        options = parse(max_requests: Exerciser::MAX_REQUESTS, dry_run: false, headers: [], params: []) do |o, opts|
           o.on("--url=URL") { |v| opts[:url] = v }
+          o.on("--header=HEADER") { |v| opts[:headers] << v }
+          o.on("--param=NAME=VALUE") { |v| opts[:params] << v }
           o.on("--commit=SHA") { |v| opts[:commit] = v }
           o.on("--version=VERSION") { |v| opts[:version] = v }
           o.on("--deployment=ID") { |v| opts[:deployment_id] = v }
@@ -291,6 +295,15 @@ module DeployAngel
           o.on("--dry-run") { opts[:dry_run] = true }
         end
         return usage_error("exercise needs --url, the app's production URL, like https://example.com") unless options[:url].to_s.match?(%r{\Ahttps?://[^/\s]+})
+
+        # DEPLOYANGEL_EXERCISE_HEADERS, one per line, keeps a secret out of
+        # shell history and the process list.
+        begin
+          headers = Exerciser.parse_headers(options[:headers] + @env["DEPLOYANGEL_EXERCISE_HEADERS"].to_s.split("\n"))
+          params = Exerciser.parse_params(options[:params])
+        rescue ArgumentError => e
+          return usage_error(e.message)
+        end
 
         target = target_from(options)
         return usage_error("no target: pass --commit, --version, or --deployment, or run inside a git repository") unless target
@@ -308,19 +321,22 @@ module DeployAngel
           return 0
         end
 
-        exerciser = Exerciser.new(base_url: options[:url], max_requests: options[:max_requests].clamp(1, Exerciser::MAX_REQUESTS),
+        exerciser = Exerciser.new(base_url: options[:url], headers: headers, params: params, max_requests: options[:max_requests].clamp(1, Exerciser::MAX_REQUESTS),
           sleeper: @sleeper, requester: @requester)
+        header_names = ("With headers: #{headers.keys.join(", ")} (values not shown)" if headers.any?)
         if options[:dry_run]
           targets, skipped = exerciser.plan(plan)
           @stdout.puts("Would send #{targets.sum(&:count)} requests:", *targets.map { |t| "  #{exerciser.url_for(t.path)} ×#{t.count}" })
-          @stdout.puts("Skipped:", *skipped.map { |s| "  #{s["key"]} (#{s["reason"]})" }) if skipped.any?
+          @stdout.puts(header_names) if header_names
+          print_skipped(skipped)
           return 0
         end
 
         result = exerciser.run(plan)
         @stdout.puts("Sent #{result.sent} requests to #{options[:url]}:",
           *result.routes.map { |r| "  #{r["key"]} ×#{r["requests"]}: #{status_codes(result.codes[r["key"]])}" })
-        @stdout.puts("Skipped:", *result.skipped.map { |s| "  #{s["key"]} (#{s["reason"]})" }) if result.skipped.any?
+        @stdout.puts(header_names) if header_names
+        print_skipped(result.skipped)
         @stdout.puts("Stopped early: #{options[:url]} isn't answering.") if result.unreachable
         # Requests that reached no page aren't worth recording: the app
         # likely never saw them.
@@ -332,10 +348,21 @@ module DeployAngel
           return USAGE_ERROR
         end
         if result.routes.any?
-          client.record_exercise(document.dig("deployment", "id"), routes: result.routes, skipped: result.skipped, ran_at: @clock.call.utc.iso8601)
+          client.record_exercise(document.dig("deployment", "id"), routes: result.routes,
+            skipped: result.skipped.map { |s| s.except("missing") }, ran_at: @clock.call.utc.iso8601)
           @stdout.puts("Recorded on the release. Wait for the verdict with: deployangel verify --wait")
         end
         result.unreachable ? USAGE_ERROR : 0
+      end
+
+      # Each skipped route and why, naming the parameters a --param would fill.
+      def print_skipped(skipped)
+        return if skipped.empty?
+
+        @stdout.puts("Skipped:", *skipped.map { |s| "  #{s["key"]} (#{s["reason"]}#{": #{s["missing"].join(", ")}" if s["missing"]&.any?})" })
+        return unless skipped.any? { |s| s["missing"]&.any? }
+
+        @stdout.puts("Fill path parameters with --param, such as --param #{skipped.find { |s| s["missing"]&.any? }["missing"].first}=42.")
       end
 
       # "200 ×4, 500 ×1", in the order they came.
