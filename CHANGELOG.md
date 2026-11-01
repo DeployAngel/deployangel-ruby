@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.36 (2026-11-01)
 
 - `deployangel exercise --param id=42` fills path parameters (`:id`,
   `{id}`, `<int:id>`), so routes like `GET /apps/:app_id/deployments/:id`
