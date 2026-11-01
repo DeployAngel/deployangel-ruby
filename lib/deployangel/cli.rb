@@ -319,14 +319,28 @@ module DeployAngel
 
         result = exerciser.run(plan)
         @stdout.puts("Sent #{result.sent} requests to #{options[:url]}:",
-          *result.routes.map { |r| "  #{r["key"]} ×#{r["requests"]}: #{r["statuses"].map { |kind, n| "#{n} #{kind}" }.join(", ")}" })
+          *result.routes.map { |r| "  #{r["key"]} ×#{r["requests"]}: #{status_codes(result.codes[r["key"]])}" })
         @stdout.puts("Skipped:", *result.skipped.map { |s| "  #{s["key"]} (#{s["reason"]})" }) if result.skipped.any?
         @stdout.puts("Stopped early: #{options[:url]} isn't answering.") if result.unreachable
+        # Requests that reached no page aren't worth recording: the app
+        # likely never saw them.
+        if result.routes.any? && result.nothing_served? && !result.unreachable
+          @stdout.puts("", "No page answered at #{options[:url]}: every route said it doesn't exist. Is that the app's own host, " \
+            "and not a marketing site or a different domain? Pass the URL where the app's pages load.")
+          @stdout.puts("#{result.unsent} more requests weren't sent, since no route answered.") if result.unsent.positive?
+          @stdout.puts("Nothing was recorded on the release.")
+          return USAGE_ERROR
+        end
         if result.routes.any?
           client.record_exercise(document.dig("deployment", "id"), routes: result.routes, skipped: result.skipped, ran_at: @clock.call.utc.iso8601)
           @stdout.puts("Recorded on the release. Wait for the verdict with: deployangel verify --wait")
         end
         result.unreachable ? USAGE_ERROR : 0
+      end
+
+      # "200 ×4, 500 ×1", in the order they came.
+      def status_codes(codes)
+        codes.map { |code, n| "#{code || "no answer"} ×#{n}" }.join(", ")
       end
 
       def exception

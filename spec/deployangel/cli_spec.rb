@@ -74,7 +74,7 @@ RSpec.describe DeployAngel::CLI do
         { "key" => "POST /password_resets", "reason" => "changes data" },
         { "key" => "GET /items/<int:pk>/", "reason" => "needs a path parameter" }
       ])
-      expect(stdout.string).to include("Sent 18 requests to https://shop.example.com/", "GET /products ×10: 10 2xx",
+      expect(stdout.string).to include("Sent 18 requests to https://shop.example.com/", "GET /products ×10: 200 ×10",
         "POST /password_resets (changes data)", "Recorded on the release.")
     end
 
@@ -90,6 +90,25 @@ RSpec.describe DeployAngel::CLI do
         { "key" => "GET /products", "requests" => 17, "statuses" => { "2xx" => 17 } },
         { "key" => "GET /about", "requests" => 1, "statuses" => { "4xx" => 1 } }
       ])
+    end
+
+    it "says when no page answered, as on a marketing site's host, and records nothing" do
+      client = FakeClient.new(documents: [ document ])
+      expect(exercise("--url=https://www.shop.example.com", client: client, answer: 404)).to eq(5)
+
+      expect(sent.size).to eq(2)
+      expect(stdout.string).to include("GET /products ×1: 404", "No page answered at https://www.shop.example.com",
+        "Is that the app's own host", "16 more requests weren't sent", "Nothing was recorded on the release.")
+      expect(client.calls.map(&:first)).not_to include(:exercise)
+    end
+
+    it "records pages that answered but turned the request away, since the app saw them" do
+      client = FakeClient.new(documents: [ document ])
+      expect(exercise("--url=https://shop.example.com", client: client, answer: 401)).to eq(0)
+
+      expect(stdout.string).to include("GET /products ×10: 401 ×10")
+      expect(stdout.string).not_to include("No page answered")
+      expect(client.calls.map(&:first)).to include(:exercise)
     end
 
     it "sends nothing on a dry run, and caps the requests it sends" do

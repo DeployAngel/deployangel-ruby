@@ -603,8 +603,10 @@ requests, about 5 a second, as `DeployAngel-Exercise`), then records what it
 sent on the release, where the page lists it under "Exercised from your
 side". It skips and names routes that change data or need a path
 parameter, and stops requesting a page after its first 404, sending its
-share to the pages that answered. A "CLI & coding agents" token can run
-it. `--dry-run` shows what it would send.
+share to the pages that answered. It prints each route's status codes. If
+every page answers 404, 405, or 410, it records nothing and exits 5, since
+the URL is probably not the app's own host (a marketing site, say). A "CLI
+& coding agents" token can run it. `--dry-run` shows what it would send.
 
 ### Suggested instructions for your coding agent
 

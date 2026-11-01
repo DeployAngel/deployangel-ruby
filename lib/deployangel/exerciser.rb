@@ -23,7 +23,18 @@ module DeployAngel
     PARAMETER = /\/[:*{<]/
 
     Target = Struct.new(:key, :path, :count)
-    Result = Struct.new(:routes, :skipped, :sent, :unreachable, keyword_init: true)
+    # codes: each route's exact status codes, nil for no answer, for
+    # display; routes carries status classes, which is what's recorded.
+    # unsent: requests the plan wanted that went nowhere, since no route
+    # answered.
+    Result = Struct.new(:routes, :skipped, :sent, :unreachable, :codes, :unsent, keyword_init: true) do
+      # Every answer said the page isn't served. Usually the wrong host,
+      # like the app's marketing site.
+      def nothing_served?
+        answers = codes.values.flat_map(&:keys)
+        answers.any? && answers.all? { |code| NOT_SERVED.include?(code) }
+      end
+    end
 
     def initialize(base_url:, max_requests: MAX_REQUESTS, sleeper: ->(seconds) { sleep(seconds) }, requester: nil)
       @base = URI(base_url)
@@ -59,6 +70,7 @@ module DeployAngel
     def run(exercise_plan)
       targets, skipped = plan(exercise_plan)
       @statuses = Hash.new { |hash, key| hash[key] = Hash.new(0) }
+      @codes = Hash.new { |hash, key| hash[key] = Hash.new(0) }
       @sent = 0
       @errors_in_a_row = 0
       leftover = 0
@@ -76,12 +88,14 @@ module DeployAngel
         answered << target if @statuses[target.key].keys.intersect?(%w[2xx 3xx])
       end
       leftover.times { |i| send_request(answered[i % answered.size]) unless unreachable? } if answered.any?
+      unsent = answered.empty? ? leftover : 0
 
       routes = targets.filter_map do |target|
         statuses = @statuses.fetch(target.key, nil) or next
         { "key" => target.key, "requests" => statuses.values.sum, "statuses" => statuses.to_h }
       end
-      Result.new(routes: routes, skipped: skipped, sent: @sent, unreachable: unreachable?)
+      Result.new(routes: routes, skipped: skipped, sent: @sent, unreachable: unreachable?,
+        codes: routes.to_h { |route| [ route["key"], @codes[route["key"]].to_h ] }, unsent: unsent)
     end
 
     def url_for(path)
@@ -98,6 +112,7 @@ module DeployAngel
         @sent += 1
         kind = status ? "#{status / 100}xx" : "error"
         @statuses[target.key][kind] += 1
+        @codes[target.key][status] += 1
         @errors_in_a_row = kind == "error" ? @errors_in_a_row + 1 : 0
         status
       end
