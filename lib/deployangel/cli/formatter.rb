@@ -110,7 +110,10 @@ module DeployAngel
           end ],
           [ "Changed but not yet exercised", changed.map { |item| item["key"] } ],
           [ "To clear sooner, exercise (deployangel plan for details)", exercisable_items(document).first(5) ],
-          [ "Late regressions", Array(document["late_regressions"]).map { |late| late["summary"] } ]
+          [ "Late regressions", Array(document["late_regressions"]).map { |late| late["summary"] } ],
+          # A failed release's rollback target and where to look first
+          # (servers from 2026-11-01 send them).
+          [ "Next steps", Array(document["next_steps"]).map { |step| step["text"] } ]
         ].reject { |_, items| items.empty? }
       end
 

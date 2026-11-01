@@ -108,7 +108,8 @@ module DeployAngel
         The release is NOT cleared.
       - Exit 2 / inconclusive: the release is NOT verified. Do not claim success.
       - Exit 1 / failed: read the findings and exceptions (`get_exception`),
-        investigate the likely cause, and propose a fix. Do not roll back or change
+        investigate the likely cause, and propose a fix. `next_steps` names the last
+        cleared release a rollback would go to. Do not roll back or change
         production without explicit approval.
       - Exit 3: still verifying; run the command again.
       - Not cleared yet: call `get_exercise_plan` (or `bundle exec deployangel plan`).

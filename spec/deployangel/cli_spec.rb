@@ -249,12 +249,15 @@ RSpec.describe DeployAngel::CLI do
                                  "count" => 8, "sources" => { "route:POST /orders" => 8 } } ]
     document["deployment"] = (document["deployment"] || {}).merge(
       "promoted_from" => { "environment" => "staging", "version" => "v57", "verdict" => "verified" })
+    document["next_steps"] = [ { "kind" => "rollback", "text" => "v183 was the last cleared release. No migration files changed since then.",
+                                 "release" => { "version" => "v183" }, "migrations" => [] } ]
     run("verify", "--format=text", client: FakeClient.new(documents: [ document ]))
 
     expect(stdout.string).to include("HTTP 5xx rate on application: 0.2% -> 6.8% (2140 samples)",
       "NoMethodError in app/services/order_creator.rb#call (8x) route:POST /orders", "Verdict: failed",
       "Promoted from staging v57 (cleared)",
-      "Recurring job on recurring_job:prune_history: didn't run, expected by 08:15 UTC (declared schedule)")
+      "Recurring job on recurring_job:prune_history: didn't run, expected by 08:15 UTC (declared schedule)",
+      "Next steps:\n  v183 was the last cleared release. No migration files changed since then.")
     expect(stdout.string).not_to include("8640000")
   end
 
