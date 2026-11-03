@@ -117,7 +117,7 @@ module DeployAngel
             TARGET_PROPERTIES),
           tool("list_deployments", "Recent deployments with their verification state and verdict.",
             { "limit" => { "type" => "integer", "minimum" => 1, "maximum" => 50, "default" => 10 } }),
-          tool("get_exception", "Sanitized details and the application stack trace for an exception fingerprint.",
+          tool("get_exception", "Sanitized details and a representative stack trace (application frames, or library frames when there are none) for an exception fingerprint.",
             { "fingerprint" => { "type" => "string" } }, required: %w[fingerprint]),
           tool("list_late_regressions", "Failures found after a release was cleared, on paths the clearance did not cover.",
             { "since" => { "type" => "string", "description" => "ISO 8601 time" },

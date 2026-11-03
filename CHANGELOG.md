@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- An exception raised entirely in gems, with no frame from the app's
+  code, now sends its first library frames as its stack trace
+  (`net-smtp/lib/net/smtp.rb#start`), normalized like the top frame, with
+  no absolute paths or versions. Before, it sent none, so an error such as
+  a mailer job's `Net::ReadTimeout` showed no trace.
+
 ## 0.1.36 (2026-11-01)
 
 - `deployangel exercise --param id=42` fills path parameters (`:id`,

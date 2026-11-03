@@ -46,10 +46,14 @@ module DeployAngel
       "#{normalize_path(path, root)}##{label}"
     end
 
-    # Application frames only, relative to the root.
+    # Application frames only, relative to the root. An exception raised
+    # entirely in gems (a mailer job's SMTP timeout) has none, so it gets its
+    # first frames instead, normalized as in top_frame: they're the only way
+    # to tell which gem's path failed.
     def backtrace(exception, root:)
-      locations(exception).select { |path, _| app_path?(path, root) }.first(MAX_BACKTRACE)
-        .map { |path, label| "#{normalize_path(path, root)}##{label}" }
+      frames = locations(exception)
+      app = frames.select { |path, _| app_path?(path, root) }
+      (app.empty? ? frames : app).first(MAX_BACKTRACE).map { |path, label| "#{normalize_path(path, root)}##{label}" }
     end
 
     # Only quoted values, numbers, emails, UUIDs, and long hex are replaced;

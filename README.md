@@ -149,7 +149,8 @@ the dashboard says so.
 - Release identity, runtime versions, and a per-process instance ID.
 
 - Exceptions: a stable fingerprint, the exception class, the first line of the
-  message, and application frames only. In the message, numbers, IDs, emails,
+  message, and application frames only, or the first library frames (gem
+  paths without versions) when none is the app's. In the message, numbers, IDs, emails,
   UUIDs, long hex strings, and quoted values are replaced with placeholders, and
   so are the request's host and, with ros-apartment, the tenants the request or
   job switched to. Other words are kept: `Payment failed for Jane Doe` is sent
@@ -238,7 +239,7 @@ end
 ### Exception messages
 
 To send exceptions without any message, only their class, fingerprint, and
-application frames:
+stack frames:
 
 ```ruby
 DeployAngel.configure do |config|

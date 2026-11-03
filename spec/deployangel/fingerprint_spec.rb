@@ -77,4 +77,15 @@ RSpec.describe DeployAngel::Fingerprint do
 
     expect(described_class.backtrace(error, root: root)).to eq([ "app/controllers/orders_controller.rb#create" ])
   end
+
+  it "keeps the first library frames when there is no application frame" do
+    error = exception_with([ "/usr/local/bundle/gems/net-protocol-0.2.2/lib/net/protocol.rb:229:in 'Net::BufferedIO#rbuf_fill'",
+                             "/usr/local/bundle/gems/net-smtp-0.5.1/lib/net/smtp.rb:1010:in 'Net::SMTP#start'",
+                             "/usr/local/bundle/gems/mail-2.8.1/lib/mail/network/delivery_methods/smtp.rb:109:in 'Mail::SMTP#deliver!'" ],
+                           klass: IOError, message: "timed out")
+
+    expect(described_class.backtrace(error, root: root)).to eq([ "net-protocol/lib/net/protocol.rb#rbuf_fill",
+                                                                "net-smtp/lib/net/smtp.rb#start",
+                                                                "mail/lib/mail/network/delivery_methods/smtp.rb#deliver!" ])
+  end
 end
