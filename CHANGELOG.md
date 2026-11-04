@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.40 (2026-11-04)
 
 - Rails apps get two checkpoints with nothing to add: `rails.mail.delivered`,
   counted from Action Mailer's deliveries, and `rails.storage.stored`, from
