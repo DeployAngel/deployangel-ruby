@@ -133,6 +133,7 @@ end
 require_relative "deployangel/rack/http"
 require_relative "deployangel/rails/http"
 require_relative "deployangel/rails/active_job"
+require_relative "deployangel/rails/checkpoints"
 require_relative "deployangel/rails/error_subscriber"
 require_relative "deployangel/tasks"
 require_relative "deployangel/metadata"

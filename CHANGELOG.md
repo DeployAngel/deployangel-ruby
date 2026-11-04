@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Rails apps get two checkpoints with nothing to add: `rails.mail.delivered`,
+  counted from Action Mailer's deliveries, and `rails.storage.stored`, from
+  Active Storage's uploads. A release after which mail or uploads quietly
+  stop fails for it, the way a checkpoint the app records would. Counts
+  only: never a recipient, a filename, or a key. Off with
+  `config.derived_checkpoints = false` or
+  `DEPLOYANGEL_DERIVED_CHECKPOINTS=false`.
+
 ## 0.1.39 (2026-11-04)
 
 - `deployangel doctor` warns when the project's AGENTS.md or CLAUDE.md has

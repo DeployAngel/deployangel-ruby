@@ -12,7 +12,7 @@ module DeployAngel
     attr_accessor :token, :endpoint, :enabled, :environments, :release_version, :revision,
       :flush_interval, :open_timeout, :read_timeout, :max_queued_payloads, :max_routes, :logger,
       :file_digests, :critical_flows, :ignored_routes, :sidekiq_cron_schedule_file, :exception_messages,
-      :recurring_jobs
+      :recurring_jobs, :derived_checkpoints
 
     def initialize(env = ENV)
       @token = env["DEPLOYANGEL_TOKEN"]
@@ -43,6 +43,9 @@ module DeployAngel
       # cron line or Fugit's words ("every day at 4am"), optionally ending
       # in a time zone.
       @recurring_jobs = {}
+      # Checkpoints counted from Rails' own notifications, with nothing to
+      # add: mail delivered and files stored (DeployAngel::Rails::Checkpoints).
+      @derived_checkpoints = parse_boolean(env["DEPLOYANGEL_DERIVED_CHECKPOINTS"]) != false
     end
 
     # Reports only with a token, and by default in every environment but

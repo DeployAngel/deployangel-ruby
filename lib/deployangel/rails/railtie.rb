@@ -9,6 +9,10 @@ module DeployAngel
         app.config.middleware.insert(0, DeployAngel::Rails::Http)
       end
 
+      initializer "deployangel.checkpoints" do
+        DeployAngel::Rails::Checkpoints.install if DeployAngel.configuration.derived_checkpoints
+      end
+
       initializer "deployangel.jobs" do
         ActiveSupport.on_load(:active_job) { DeployAngel::Rails::ActiveJob.install }
         DeployAngel::Sidekiq.install
