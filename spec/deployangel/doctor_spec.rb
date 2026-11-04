@@ -143,4 +143,22 @@ RSpec.describe "deployangel doctor" do
     expect(json["checks"].first).to eq("status" => "ok", "message" => "Agent: deployangel 0.1.23 in Gemfile.lock")
     expect(json.dig("setup", "app", "name")).to eq("shop")
   end
+
+  it "warns when the project has an older copy of DeployAngel's agent instructions, and not for the current one" do
+    current = DeployAngel::CLI::AGENT_INSTRUCTIONS
+    write("AGENTS.md", "# Project\n\n#{current}")
+    doctor
+    expect(stdout.string).not_to include("older copy")
+
+    write("AGENTS.md", "# Project\n\n#{DeployAngel::CLI::AGENTS_START}\n## Production verification (DeployAngel)\nOld text.\n#{DeployAngel::CLI::AGENTS_END}\n")
+    write("CLAUDE.md", "Hand-written notes about DeployAngel, with no markers.\n")
+    stdout.truncate(0)
+    stdout.rewind
+    doctor
+
+    expect(stdout.string).to include("! AGENTS.md has an older copy of DeployAngel's agent instructions",
+      "Run deployangel install agents to update it.")
+    expect(stdout.string).not_to include("CLAUDE.md has")
+  end
+
 end

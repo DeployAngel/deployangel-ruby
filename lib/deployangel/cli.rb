@@ -258,6 +258,7 @@ module DeployAngel
         output(document, options[:format]) { Formatter.verification(document) }
         step_summary(Formatter.markdown(document))
         @stderr.puts("deployangel: timed out; verification is still in progress") if outcome.timed_out
+        stale_instructions_note if status
         outcome.exit_code
       end
 
@@ -406,6 +407,15 @@ module DeployAngel
       # What this checkout will report and what DeployAngel has seen of the
       # app. Warnings are advice, so only errors (a rejected token, an
       # unreachable server, no agent in the bundle) fail it.
+      # At the start of a session (`status`), where an agent reads it and can
+      # update the instructions it's following.
+      def stale_instructions_note
+        stale = Doctor.stale_instructions(@root)
+        return if stale.empty?
+
+        @stderr.puts("deployangel: #{Doctor.stale_instructions_note(stale)}; run `deployangel install agents` to update")
+      end
+
       def doctor
         format = parse(format: nil) { |o, opts| o.on("--format=FORMAT", %w[text json]) { |v| opts[:format] = v } }[:format]
         doctor = Doctor.new(root: @root, client: doctor_client, env: @env)

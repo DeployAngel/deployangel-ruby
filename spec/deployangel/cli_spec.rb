@@ -15,6 +15,18 @@ RSpec.describe DeployAngel::CLI do
       clock: clock, git_head: git_head).run
   end
 
+  it "says at the start of a session when the project's agent instructions are out of date" do
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "AGENTS.md"), "#{DeployAngel::CLI::AGENTS_START}\nOld text.\n#{DeployAngel::CLI::AGENTS_END}\n")
+      client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: "verified") ])
+      described_class.new(%w[status --format=text], env: {}, stdout: stdout, stderr: stderr, client: client, sleeper: sleeper,
+        clock: clock, git_head: "81ac27d0000", root: root).run
+
+      expect(stderr.string).to include("AGENTS.md has an older copy of DeployAngel's agent instructions; " \
+        "run `deployangel install agents` to update")
+    end
+  end
+
   it "maps verdicts to exit codes" do
     { "verified" => 0, "failed" => 1, "inconclusive" => 2 }.each do |verdict, code|
       client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: verdict) ])

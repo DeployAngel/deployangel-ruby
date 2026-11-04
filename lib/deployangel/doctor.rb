@@ -36,8 +36,27 @@ module DeployAngel
     def checks
       @checks ||= begin
         @setup, server = server_checks
-        [ *agent_checks, here_check, schedule_check, *server, release_check, *comparison_checks ].compact
+        [ *agent_checks, here_check, schedule_check, *server, release_check, *comparison_checks, instructions_check ].compact
       end
+    end
+
+    # Files whose DeployAngel block (between the markers `deployangel install
+    # agents` writes) differs from this version's: agents keep following the
+    # older copy until it's updated. Hand-written instructions without the
+    # markers aren't checked.
+    def self.stale_instructions(root)
+      block = /#{Regexp.escape(CLI::AGENTS_START)}.*?#{Regexp.escape(CLI::AGENTS_END)}/m
+      %w[AGENTS.md CLAUDE.md].select do |name|
+        path = File.join(root, name)
+        found = File.file?(path) && File.read(path)[block]
+        found && found != CLI::AGENT_INSTRUCTIONS.chomp
+      end
+    rescue SystemCallError
+      []
+    end
+
+    def self.stale_instructions_note(files)
+      "#{files.join(" and ")} #{files.one? ? "has" : "have"} an older copy of DeployAngel's agent instructions"
     end
 
     def failed?
@@ -55,6 +74,14 @@ module DeployAngel
         return [ Check.new(status: :ok, message: "Agent: deployangel #{version} in Gemfile.lock") ] if version
 
         [ Check.new(status: :error, message: "The agent isn't in the bundle", fix: "Add gem \"deployangel\" to the Gemfile and run bundle install.") ]
+      end
+
+      def instructions_check
+        stale = self.class.stale_instructions(@root)
+        return if stale.empty?
+
+        Check.new(status: :warn, message: self.class.stale_instructions_note(stale),
+          fix: "Run deployangel install agents to update #{stale.one? ? "it" : "them"}.")
       end
 
       def schedule_check
