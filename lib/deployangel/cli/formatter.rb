@@ -10,7 +10,7 @@ module DeployAngel
         "job_failure_rate" => "Job failure rate", "job_duration" => "Job duration p95", "queue_latency" => "Queue latency p95",
         "new_fingerprint" => "New exception", "fingerprint_amplification" => "Exception amplification",
         "missing_recurring_job" => "Recurring job", "first_use_failure" => "First-use failure", "external_check" => "External check",
-        "checkpoint_rate" => "Checkpoint"
+        "checkpoint_rate" => "Checkpoint", "volume_drop" => "Volume"
       }.freeze
       DURATIONS = %w[p95_latency job_duration queue_latency].freeze
       # Exercise plan statuses with something worth running now.
@@ -18,6 +18,9 @@ module DeployAngel
       REASONS = { "normally_active" => "normally active", "changed_in_release" => "changed in this release",
                   "rarely_used" => "rarely used", "critical_flow" => "critical flow" }.freeze
       COUNTS = %w[new_fingerprint checkpoint_rate].freeze
+      # Findings worth listing: problems, and changes a person accepted as
+      # intended (servers from 2026-11-04 send "accepted").
+      LISTED = %w[failing warning accepted].freeze
 
       module_function
 
@@ -26,7 +29,10 @@ module DeployAngel
         problems = problems(document)
         if problems.any?
           lines << "Findings:"
-          problems.each { |f| lines << "  #{f["status"].ljust(8)} #{finding_line(f)}" }
+          problems.each do |f|
+            lines << "  #{f["status"].ljust(8)} #{finding_line(f)}"
+            acceptance_lines(f).each { |line| lines << "           #{line}" }
+          end
         end
         if (gathering = gathering_line(document))
           lines << "#{gathering} (--format=json for details)"
@@ -44,7 +50,7 @@ module DeployAngel
         problems = problems(document)
         if problems.any?
           lines.push("", "| Status | Finding |", "| --- | --- |")
-          problems.each { |f| lines << "| #{f["status"]} | #{cell(finding_line(f))} |" }
+          problems.each { |f| lines << "| #{f["status"]} | #{cell([ finding_line(f), *acceptance_lines(f) ].join(". "))} |" }
         end
         if (gathering = gathering_line(document))
           lines.push("", gathering)
@@ -85,7 +91,19 @@ module DeployAngel
       end
 
       def problems(document)
-        Array(document["findings"]).select { |f| %w[failing warning].include?(f["status"]) }
+        Array(document["findings"]).select { |f| LISTED.include?(f["status"]) }
+      end
+
+      # Who accepted a finding as an intended change, or where a person can.
+      # Only a person can, on the release page: the API can't.
+      def acceptance_lines(finding)
+        if (accepted = finding["accepted_as_intended"])
+          [ "Accepted as intended by #{accepted["by"]}: #{accepted["note"]}" ]
+        elsif finding["accept_url"]
+          [ "If this change was intended, a person can accept it: #{finding["accept_url"]}" ]
+        else
+          []
+        end
       end
 
       def gathering_line(document)
@@ -216,7 +234,12 @@ module DeployAngel
 
       def finding_line(finding)
         label = "#{LABELS.fetch(finding["signal"], finding["signal"])} on #{finding["scope"]}"
-        if COUNTS.include?(finding["signal"])
+        if finding["signal"] == "volume_drop"
+          # Its baseline value is what the release before predicts for this
+          # much traffic.
+          unit = finding["scope"].to_s.start_with?("route:") ? "requests" : "runs"
+          "#{label}: #{finding["observed_value"].to_i} #{unit}, about #{finding["baseline_value"].to_f.round} expected"
+        elsif COUNTS.include?(finding["signal"])
           "#{label}: #{finding["observed_value"].to_i} occurrences"
         elsif finding["signal"] == "missing_recurring_job"
           # Its value is the job's interval in seconds, not a rate.
