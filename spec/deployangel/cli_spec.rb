@@ -329,6 +329,19 @@ RSpec.describe DeployAngel::CLI do
     expect(stdout.string).not_to include("8640000")
   end
 
+  it "marks a late regression a person dismissed as a false alarm, with who and why" do
+    document = verdict_document(state: "watching", verdict: "verified")
+    document["late_regressions"] = [
+      { "summary" => "P95 latency across the app: 70 ms in the same hours over the past week, 514 ms in the last hour on v42",
+        "dismissed" => { "at" => "2026-11-05T17:00:00Z", "by" => "Pat", "note" => "Busier dashboard" } },
+      { "summary" => "POST /password_resets failed on first use since v42", "dismissed" => nil }
+    ]
+    run("verify", "--format=text", client: FakeClient.new(documents: [ document ]))
+
+    expect(stdout.string).to include("514 ms in the last hour on v42 (dismissed as a false alarm by Pat: Busier dashboard)",
+      "POST /password_resets failed on first use since v42\n")
+  end
+
   it "shows a volume drop against what was expected, who accepted a change as intended, and where a person can" do
     document = verdict_document(state: "closed", verdict: "failed")
     document["findings"] = [

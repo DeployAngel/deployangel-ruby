@@ -124,7 +124,8 @@ module DeployAngel
             { "limit" => { "type" => "integer", "minimum" => 1, "maximum" => 50, "default" => 10 } }),
           tool("get_exception", "Sanitized details and a representative stack trace (application frames, or library frames when there are none) for an exception fingerprint.",
             { "fingerprint" => { "type" => "string" } }, required: %w[fingerprint]),
-          tool("list_late_regressions", "Failures found after a release was cleared, on paths the clearance did not cover.",
+          tool("list_late_regressions", "Failures found after a release was cleared, on paths the clearance did not cover. " \
+               "One with dismissed set was dismissed by a person as a false alarm, with their reason: it needs no action.",
             { "since" => { "type" => "string", "description" => "ISO 8601 time" },
               "limit" => { "type" => "integer", "minimum" => 1, "maximum" => 50, "default" => 10 } })
         ]
