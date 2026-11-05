@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.41 (2026-11-04)
 
 - The agent keeps an hour of unsent minutes (60 payloads, up from 10) when
   DeployAngel can't be reached, so an outage of up to an hour loses no
