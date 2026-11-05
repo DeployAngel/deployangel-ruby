@@ -196,7 +196,7 @@ adds, memory with every list at its cap, and the one-time file digest pass
 (`APP_ROOT=path/to/app` to digest your own app). On an Apple M-series laptop
 with Ruby 3.4, recording a request adds about 1.6 µs and 6 objects, and with
 every route, job, checkpoint, and exception list at its cap the agent holds
-about 3 MB, including 10 unsent minutes.
+about 4 MB, including an hour (60) of unsent minutes.
 
 ## Configuration
 
