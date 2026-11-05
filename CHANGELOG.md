@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The agent keeps an hour of unsent minutes (60 payloads, up from 10) when
+  DeployAngel can't be reached, so an outage of up to an hour loses no
+  telemetry. A minute that is lost leaves a gap DeployAngel has to learn
+  the app's normal traffic around. Kept gzipped, a full hour adds under
+  1 MB at worst (`rake bench`). `config.max_queued_payloads` still sets it.
+
 ## 0.1.40 (2026-11-04)
 
 - Rails apps get two checkpoints with nothing to add: `rails.mail.delivered`,

@@ -24,7 +24,10 @@ module DeployAngel
       @flush_interval = 60
       @open_timeout = 2
       @read_timeout = 5
-      @max_queued_payloads = 10
+      # An hour of minutes, gzipped (about 1 MB at worst), so an hour when
+      # DeployAngel can't be reached loses nothing. A lost minute leaves a
+      # gap the cloud learns the app's normal traffic around.
+      @max_queued_payloads = 60
       @max_routes = 100
       @logger = Logger.new($stderr, level: Logger::WARN, progname: "deployangel")
       @file_digests = parse_boolean(env["DEPLOYANGEL_FILE_DIGESTS"]) != false

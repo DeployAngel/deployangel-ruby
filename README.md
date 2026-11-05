@@ -185,8 +185,9 @@ user data.
   in-memory counters.
 - Payloads are sent from a background thread, once a minute, with short
   timeouts.
-- When DeployAngel is unreachable, the buffer is bounded (10 payloads, kept as
-  gzipped JSON) and the oldest are dropped. Your app is never blocked or failed.
+- When DeployAngel is unreachable, the buffer is bounded (60 payloads, an hour,
+  kept as gzipped JSON: under 1 MB at worst) and the oldest are dropped. Your
+  app is never blocked or failed.
 - Safe across forks (Puma cluster mode and similar), and the minute in progress
   is flushed at shutdown.
 
