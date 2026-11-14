@@ -52,6 +52,26 @@ class FakeClient
 
   def exception(fingerprint) = { "fingerprint" => fingerprint, "exception_class" => "NoMethodError", "backtrace" => [] }
   def late_regressions(**) = []
+
+  def production_context(**lookup)
+    @calls << [ :production_context, lookup ]
+    production_context_document
+  end
+end
+
+# Production context as the server returns it for a refunds controller.
+def production_context_document
+  { "app" => "shop", "release" => "v41",
+    "files" => [ { "path" => "app/controllers/refunds_controller.rb", "items" => [ "route:POST /refunds" ], "exceptions" => [] },
+                 { "path" => "lib/money.rb", "items" => [], "exceptions" => [] } ],
+    "unmapped_files" => [ "lib/money.rb" ],
+    "items" => [ { "kind" => "route", "key" => "POST /refunds", "matched_by" => [ "release_metadata" ],
+                   "files" => [ "app/controllers/refunds_controller.rb" ], "uses_last_7_days" => 3, "failures_last_7_days" => 1,
+                   "clearance" => { "outlook" => "rarely_used", "note" => "Rarely used: a clearance won't cover a change to it." },
+                   "pending_first_use" => false, "schedule" => nil, "critical_flows" => [ "refunds" ],
+                   "failed_releases" => [ { "release" => "v39", "signal" => "first_use_failure", "label" => "First-use failure" } ],
+                   "late_regressions" => [] } ],
+    "truncated" => false, "notes" => [ "Uses are counted over the last 7 days." ] }
 end
 
 # An exercise plan as the server returns it for a quiet app's release.

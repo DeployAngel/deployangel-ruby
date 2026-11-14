@@ -229,6 +229,40 @@ module DeployAngel
         end
       end
 
+      OUTLOOKS = { "normal_traffic" => "normal traffic covers it", "later_today" => "runs later today",
+                   "rarely_used" => "rarely used: a clearance won't cover it", "unknown" => "outlook unknown" }.freeze
+
+      # Production context, one block per route or job.
+      def production_context(details)
+        lines = []
+        Array(details["items"]).each do |item|
+          uses = "#{item["uses_last_7_days"]} #{item["kind"] == "route" ? "requests" : "runs"} in 7 days"
+          failures = item["failures_last_7_days"].to_i.positive? ? ", #{item["failures_last_7_days"]} failed" : ""
+          lines << "#{item["kind"] == "route" ? "Route" : "Job"} #{item["key"]}: #{uses}#{failures} · " \
+                   "#{OUTLOOKS.fetch(item.dig("clearance", "outlook"), item.dig("clearance", "outlook"))}"
+          lines << "  #{item.dig("clearance", "note")}" if item.dig("clearance", "outlook") != "normal_traffic"
+          lines << "  Pending first use since an earlier release" if item["pending_first_use"]
+          if (schedule = item["schedule"])
+            lines << "  Scheduled #{schedule["schedule"]}#{", next #{schedule["next_at"]}" if schedule["next_at"]} (#{schedule["status"]})"
+          end
+          lines << "  Critical flows: #{item["critical_flows"].join(", ")}" if Array(item["critical_flows"]).any?
+          Array(item["failed_releases"]).each { |failed| lines << "  Failed #{failed["release"]}: #{failed["label"]}" }
+          Array(item["late_regressions"]).each do |late|
+            lines << "  Late regression in #{late["release"]}#{" (dismissed)" if late["dismissed"]}: #{late["summary"]}"
+          end
+        end
+        Array(details["files"]).each do |file|
+          Array(file["exceptions"]).each do |exception|
+            lines << "#{file["path"]}: #{exception["exception_class"]} in #{exception["top_frame"]}, " \
+                     "#{exception["occurrences_last_7_days"]} in 7 days (fingerprint #{exception["fingerprint"]})"
+          end
+        end
+        unmapped = Array(details["unmapped_files"])
+        lines << "Unmapped (not known to be unused): #{unmapped.join(", ")}" if unmapped.any?
+        lines << "Nothing found for these." if lines.empty?
+        (lines + Array(details["notes"]).map { |note| "Note: #{note}" }).join("\n")
+      end
+
       def exception(details)
         [ "#{details["exception_class"]}: #{details["message"]}",
           "Fingerprint #{details["fingerprint"]} · first seen #{details["first_seen_at"]} (#{details["first_seen_release"]})",

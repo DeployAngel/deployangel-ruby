@@ -517,6 +517,7 @@ bundle exec deployangel exercise --url=https://example.com  # send the plan's re
 bundle exec deployangel release --commit=$SHA          # register a deploy (manual or CI)
 bundle exec deployangel check --name="smoke: signup" --status=pass --covers=registration
 bundle exec deployangel exception <fingerprint>
+bundle exec deployangel context app/jobs/refund_job.rb # what production does with code, before changing it
 bundle exec deployangel doctor                         # check the setup
 ```
 
@@ -580,8 +581,23 @@ server needs `DEPLOYANGEL_API_TOKEN` in the environment it starts in.
 
 Tools: `get_verification`, `wait_for_verification` (up to 5 minutes per call),
 `get_exercise_plan`, `list_deployments`, `get_exception`,
-`list_late_regressions`, and `register_deployment` when the token allows it.
-The tools are read-only with respect to production.
+`list_late_regressions`, `get_production_context`, and `register_deployment`
+when the token allows it. The tools are read-only with respect to production.
+
+### Before changing code
+
+`deployangel context <files>` (or the `get_production_context` MCP tool)
+says what production does with code before you or your agent change it: the
+routes and jobs the files serve, how often production ran them in the last
+week and how many failed, whether a release's clearance would cover a
+change to them at this time of day, their schedules and critical flows, and
+failed releases and late regressions on them in the last 90 days. A rarely
+used route won't be covered by a clearance, so that's when to plan a smoke
+test or `deployangel exercise`. Files map through the routes and jobs the
+agent reported and through stack traces; models and libraries often map
+only through the exceptions raised in them, and a file DeployAngel can't map
+is listed as unmapped, never as unused. Pass `--route` or `--job` to ask
+about a route or job class by name.
 
 ### Clearing quiet releases sooner
 

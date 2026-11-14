@@ -40,6 +40,13 @@ module DeployAngel
     def exception(fingerprint) = get("/api/v1/exceptions/#{URI.encode_www_form_component(fingerprint)}")
     def late_regressions(**filters) = get("/api/v1/late_regressions", filters.compact)["late_regressions"]
 
+    # What production does with some code, before a coding agent changes it
+    # (spec §27, Production context).
+    def production_context(files: [], routes: [], job_classes: [])
+      get("/api/v1/production_context",
+        { "files[]" => files, "routes[]" => routes, "job_classes[]" => job_classes }.reject { |_, values| values.empty? })
+    end
+
     def verification(deployment_id, all_findings: false)
       get("/api/v1/deployments/#{deployment_id}/verification", all_findings ? { findings: "all" } : {})
     end

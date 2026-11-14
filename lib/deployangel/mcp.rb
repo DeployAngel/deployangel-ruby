@@ -37,6 +37,11 @@ module DeployAngel
         evidence, and give them the accept_url so a person decides. Until someone accepts it, the release
         is failed: never report it as success. A finding with status
         accepted was accepted as intended by the person in accepted_as_intended.
+        Before changing code that serves requests or runs as a job, call get_production_context with the files
+        you plan to change. It says which routes and jobs they serve and how often production runs them. If an
+        item's clearance outlook is rarely_used or later_today, a clearance won't cover your change soon after
+        deploying: tell the user, and plan to exercise it or report a check that covers it. unmapped_files are
+        files DeployAngel can't map to routes or jobs: never take that to mean they're unused.
       TEXT
 
       TARGET_PROPERTIES = {
@@ -128,7 +133,16 @@ module DeployAngel
           tool("list_late_regressions", "Failures found after a release was cleared, on paths the clearance did not cover. " \
                "One with dismissed set was dismissed by a person as a false alarm, with their reason: it needs no action.",
             { "since" => { "type" => "string", "description" => "ISO 8601 time" },
-              "limit" => { "type" => "integer", "minimum" => 1, "maximum" => 50, "default" => 10 } })
+              "limit" => { "type" => "integer", "minimum" => 1, "maximum" => 50, "default" => 10 } }),
+          tool("get_production_context", "What production does with code before you change it: the routes and jobs the given " \
+            "files serve, how often production ran them in the last 7 days and how many failed, whether a release's clearance " \
+            "would cover a change to them (clearance.outlook: normal_traffic, later_today, rarely_used, or unknown), their " \
+            "schedules and critical flows, and failed releases and late regressions on them in the last 90 days. " \
+            "Files it can't map are listed in unmapped_files; that doesn't mean they're unused.",
+            { "files" => { "type" => "array", "items" => { "type" => "string" },
+                           "description" => "Repository-relative paths, e.g. app/jobs/refund_job.rb (up to 50)." },
+              "routes" => { "type" => "array", "items" => { "type" => "string" }, "description" => "Route keys, e.g. \"POST /refunds\"." },
+              "job_classes" => { "type" => "array", "items" => { "type" => "string" }, "description" => "Job class names, e.g. RefundJob." } })
         ]
         if scopes.include?("deployments")
           list << tool("register_deployment", "Register a deployment so it is verified (manual and CI deploys).",
@@ -161,6 +175,7 @@ module DeployAngel
             when "get_exception" then @client.exception(arguments.fetch("fingerprint") { raise ArgumentError, "fingerprint is required" })
             when "list_late_regressions"
               { "late_regressions" => @client.late_regressions(since: arguments["since"], limit: arguments.fetch("limit", 10)) }
+            when "get_production_context" then production_context(arguments)
             when "register_deployment"
               raise ArgumentError, "register_deployment is not available for this token" unless scopes.include?("deployments")
 
@@ -186,6 +201,15 @@ module DeployAngel
 
           { "exit_code" => outcome.exit_code, "meaning" => meaning(outcome.exit_code),
             "in_progress" => outcome.exit_code == VerificationWaiter::TIMED_OUT, "verification" => outcome.document }
+        end
+
+        def production_context(arguments)
+          files, routes, job_classes = %w[files routes job_classes].map { |key| Array(arguments[key]).map(&:to_s).reject(&:empty?) }
+          raise ArgumentError, "give files, routes, or job_classes" if [ files, routes, job_classes ].all?(&:empty?)
+
+          @client.production_context(files: files, routes: routes, job_classes: job_classes)
+        rescue Client::NotFound
+          { "note" => "This DeployAngel server doesn't offer production context yet." }
         end
 
         def plan_content(outcome)

@@ -20,7 +20,7 @@ module DeployAngel
   # Runs without booting Rails.
   class CLI
     USAGE_ERROR = 5
-    COMMANDS = %w[release verify status plan exercise exception check install doctor setup token mcp version help].freeze
+    COMMANDS = %w[release verify status plan exercise exception context check install doctor setup token mcp version help].freeze
 
     HELP = <<~TEXT
       Usage: deployangel <command> [options]
@@ -37,6 +37,8 @@ module DeployAngel
                    requests to production        [--param=NAME=VALUE] [--header="Name: value"]
                                                  [--max-requests=200] [--dry-run]
         exception  Details for a fingerprint     deployangel exception FINGERPRINT
+        context    What production does with      deployangel context FILE... [--route="POST /x"] [--job=Job]
+                   code, before you change it    [--format=text|json]
         check      Report a smoke test result    --name=NAME --status=pass|fail [--covers=a,b]
                                                  [--commit=SHA | --deployment=ID] [--details-url=URL]
         install    Add a Kamal deploy hook,       deployangel install kamal
@@ -136,6 +138,12 @@ module DeployAngel
         and `list_late_regressions` (or run `bundle exec deployangel status`). If a
         recent release failed, isn't cleared yet, or has a late regression, mention
         it before other work.
+      - Before changing code that serves requests or runs as a job: call
+        `get_production_context` with the files you plan to change (or run
+        `bundle exec deployangel context <files>`). If an item's clearance outlook
+        is `rarely_used` or `later_today`, a clearance won't cover your change soon
+        after deploying: say so, and plan to exercise it or report a check that
+        covers it. Files in `unmapped_files` aren't known to be unused.
       #{AGENTS_END}
     MARKDOWN
 
@@ -185,6 +193,7 @@ module DeployAngel
       when "plan" then plan
       when "exercise" then exercise
       when "exception" then exception
+      when "context" then context
       when "check" then check
       when "install" then install
       when "doctor" then doctor
@@ -382,6 +391,28 @@ module DeployAngel
         details = client.exception(fingerprint)
         output(details, format) { Formatter.exception(details) }
         0
+      end
+
+      # What production does with some code, before changing it (spec §27,
+      # Production context).
+      def context
+        options = parse(routes: [], job_classes: [], format: nil) do |o, opts|
+          o.on("--route=ROUTE") { |v| opts[:routes] << v }
+          o.on("--job=JOB_CLASS") { |v| opts[:job_classes] << v }
+          o.on("--format=FORMAT", %w[text json]) { |v| opts[:format] = v }
+        end
+        files = @argv.dup
+        @argv.clear
+        if files.empty? && options[:routes].empty? && options[:job_classes].empty?
+          return usage_error("context needs files, --route, or --job, like `deployangel context app/jobs/refund_job.rb`")
+        end
+
+        details = client.production_context(files: files, routes: options[:routes], job_classes: options[:job_classes])
+        output(details, options[:format]) { Formatter.production_context(details) }
+        0
+      rescue Client::NotFound
+        @stderr.puts("deployangel: this DeployAngel server doesn't offer production context yet")
+        USAGE_ERROR
       end
 
       def check

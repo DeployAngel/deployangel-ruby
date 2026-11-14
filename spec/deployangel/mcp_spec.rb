@@ -48,7 +48,7 @@ RSpec.describe DeployAngel::MCP::Server do
     client.scopes = %w[verifications:read deployments]
     calls = { "get_verification" => {}, "wait_for_verification" => { "timeout_seconds" => 1 }, "get_exercise_plan" => {},
               "list_deployments" => {}, "get_exception" => { "fingerprint" => "abc" }, "list_late_regressions" => {},
-              "register_deployment" => { "commit" => "abc1234" } }
+              "get_production_context" => { "files" => [ "app/jobs/refund_job.rb" ] }, "register_deployment" => { "commit" => "abc1234" } }
     expect(request("tools/list").dig("result", "tools").map { |tool| tool["name"] }).to match_array(calls.keys)
 
     calls.each do |name, arguments|
@@ -56,6 +56,25 @@ RSpec.describe DeployAngel::MCP::Server do
       expect(result["structuredContent"]).to be_a(Hash), "#{name} returned #{result["structuredContent"].class}"
     end
     expect(request("tools/call", { "name" => "list_deployments" }).dig("result", "structuredContent")).to eq("deployments" => [ { "id" => 42 } ])
+  end
+
+  it "says what production does with code before an agent changes it" do
+    result = request("tools/call", { "name" => "get_production_context",
+      "arguments" => { "files" => [ "app/controllers/refunds_controller.rb", "" ], "routes" => [ "POST /refunds" ] } })["result"]
+
+    expect(result["structuredContent"].dig("items", 0, "clearance", "outlook")).to eq("rarely_used")
+    expect(client.calls.last).to eq([ :production_context,
+      { files: [ "app/controllers/refunds_controller.rb" ], routes: [ "POST /refunds" ], job_classes: [] } ])
+    expect(request("initialize")["result"]["instructions"]).to include("get_production_context", "never take that to mean they're unused")
+    expect(request("tools/call", { "name" => "get_production_context", "arguments" => {} })["error"])
+      .to include("message" => "give files, routes, or job_classes")
+  end
+
+  it "says when the server doesn't offer production context yet" do
+    def client.production_context(**) = raise(DeployAngel::Client::NotFound, "not found")
+
+    result = request("tools/call", { "name" => "get_production_context", "arguments" => { "files" => [ "app/models/order.rb" ] } })["result"]
+    expect(result["structuredContent"]).to eq("note" => "This DeployAngel server doesn't offer production context yet.")
   end
 
   it "waits for a verdict and returns structured content with the exit code's meaning" do

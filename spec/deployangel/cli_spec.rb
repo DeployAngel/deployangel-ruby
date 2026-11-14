@@ -27,6 +27,18 @@ RSpec.describe DeployAngel::CLI do
     end
   end
 
+  it "says what production does with code, before changing it" do
+    client = FakeClient.new
+    expect(run("context", "app/controllers/refunds_controller.rb", "lib/money.rb", "--job=RefundJob", "--format=text", client: client)).to eq(0)
+
+    expect(client.calls.last).to eq([ :production_context,
+      { files: [ "app/controllers/refunds_controller.rb", "lib/money.rb" ], routes: [], job_classes: [ "RefundJob" ] } ])
+    expect(stdout.string).to include("Route POST /refunds: 3 requests in 7 days, 1 failed · rarely used: a clearance won't cover it",
+      "  Critical flows: refunds", "  Failed v39: First-use failure", "Unmapped (not known to be unused): lib/money.rb",
+      "Note: Uses are counted over the last 7 days.")
+    expect(run("context", client: client)).to eq(described_class::USAGE_ERROR)
+  end
+
   it "maps verdicts to exit codes" do
     { "verified" => 0, "failed" => 1, "inconclusive" => 2 }.each do |verdict, code|
       client = FakeClient.new(documents: [ verdict_document(state: "closed", verdict: verdict) ])
