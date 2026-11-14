@@ -229,18 +229,22 @@ module DeployAngel
         end
       end
 
-      OUTLOOKS = { "normal_traffic" => "normal traffic covers it", "later_today" => "runs later today",
-                   "rarely_used" => "rarely used: a clearance won't cover it", "unknown" => "outlook unknown" }.freeze
+      OUTLOOKS = { "normal_traffic" => "normal traffic covers it", "scheduled" => "scheduled: watched after clearance",
+                   "later_today" => "runs later today", "rarely_used" => "rarely used: a clearance won't cover it",
+                   "unknown" => "outlook unknown" }.freeze
 
-      # Production context, one block per route or job.
+      # Production context, one block per route or job. What each outlook
+      # means is said once, after the items, not under every one.
       def production_context(details)
         lines = []
+        explained = {}
         Array(details["items"]).each do |item|
           uses = "#{item["uses_last_7_days"]} #{item["kind"] == "route" ? "requests" : "runs"} in 7 days"
           failures = item["failures_last_7_days"].to_i.positive? ? ", #{item["failures_last_7_days"]} failed" : ""
           lines << "#{item["kind"] == "route" ? "Route" : "Job"} #{item["key"]}: #{uses}#{failures} · " \
                    "#{OUTLOOKS.fetch(item.dig("clearance", "outlook"), item.dig("clearance", "outlook"))}"
-          lines << "  #{item.dig("clearance", "note")}" if item.dig("clearance", "outlook") != "normal_traffic"
+          outlook = item.dig("clearance", "outlook")
+          explained[outlook] ||= item.dig("clearance", "note") unless outlook == "normal_traffic"
           lines << "  Pending first use since an earlier release" if item["pending_first_use"]
           if (schedule = item["schedule"])
             lines << "  Scheduled #{schedule["schedule"]}#{", next #{schedule["next_at"]}" if schedule["next_at"]} (#{schedule["status"]})"
@@ -251,6 +255,7 @@ module DeployAngel
             lines << "  Late regression in #{late["release"]}#{" (dismissed)" if late["dismissed"]}: #{late["summary"]}"
           end
         end
+        explained.each_value { |note| lines << note if note }
         Array(details["files"]).each do |file|
           Array(file["exceptions"]).each do |exception|
             lines << "#{file["path"]}: #{exception["exception_class"]} in #{exception["top_frame"]}, " \

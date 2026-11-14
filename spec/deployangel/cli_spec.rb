@@ -35,7 +35,9 @@ RSpec.describe DeployAngel::CLI do
       { files: [ "app/controllers/refunds_controller.rb", "lib/money.rb" ], routes: [], job_classes: [ "RefundJob" ] } ])
     expect(stdout.string).to include("Route POST /refunds: 3 requests in 7 days, 1 failed · rarely used: a clearance won't cover it",
       "  Critical flows: refunds", "  Failed v39: First-use failure", "Unmapped (not known to be unused): lib/money.rb",
-      "Note: Uses are counted over the last 7 days.")
+      "Note: Uses are counted over the last 7 days.", "Job RefundJob: 7 runs in 7 days · scheduled: watched after clearance",
+      "  Scheduled at 3am every day, next 2026-11-15T03:00:00Z (ran)", "Runs on its declared schedule, next at 2026-11-15T03:00:00Z.")
+    expect(stdout.string.scan("Rarely used: a clearance won't cover a change to it.").size).to eq(1)
     expect(run("context", client: client)).to eq(described_class::USAGE_ERROR)
   end
 
