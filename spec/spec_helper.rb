@@ -57,7 +57,9 @@ module TestHelpers
       config.endpoint = "http://deployangel.test"
       config.revision = "81ac27d"
       config.release_version = "v184"
-      config.logger = nil
+      # The agent rescues its own errors and only logs them, so a nil logger
+      # would hide why a spec saw nothing sent.
+      config.logger = Logger.new($stderr, progname: "deployangel")
     end
   end
 end
